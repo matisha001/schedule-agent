@@ -1,18 +1,16 @@
-"""ORM 映射：球队信息表（meta 库）。"""
+"""ORM 映射：team（schedule_dw 库，V3 定稿）。"""
 
-from sqlalchemy import String, Text
+from sqlalchemy import DateTime, Integer, SmallInteger, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base
 
 
 class TeamInfoMySQL(Base):
-    __tablename__ = "team_info"
+    __tablename__ = "team"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    name: Mapped[str] = mapped_column(String(128), index=True)
-    sport: Mapped[str] = mapped_column(String(64))
-    short_name: Mapped[str] = mapped_column(String(64))
-    region: Mapped[str] = mapped_column(String(128))
-    home_venue: Mapped[str] = mapped_column(String(255))
-    description: Mapped[str] = mapped_column(Text, default="")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tournament_id: Mapped[int] = mapped_column(Integer, index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    status: Mapped[int] = mapped_column(SmallInteger, default=0)  # 0待审核 1已确认 2已驳回 3已取消
+    created_at: Mapped[str] = mapped_column(DateTime, server_default="CURRENT_TIMESTAMP")

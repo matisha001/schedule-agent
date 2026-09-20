@@ -1,4 +1,4 @@
-"""TeamInfo 双向转换器。"""
+"""Team 双向转换器。"""
 
 from dataclasses import asdict
 
@@ -6,12 +6,15 @@ from app.entities.team_info import TeamInfo
 from app.models.team_info import TeamInfoMySQL
 
 
-class TeamInfoMapper:
+class TeamMapper:
     @staticmethod
     def to_entity(model: TeamInfoMySQL) -> TeamInfo:
         return TeamInfo(
-            id=model.id, name=model.name, sport=model.sport, short_name=model.short_name,
-            region=model.region, home_venue=model.home_venue, description=model.description,
+            id=model.id,
+            tournament_id=model.tournament_id,
+            name=model.name,
+            status=model.status,
+            created_at=model.created_at,
         )
 
     @staticmethod

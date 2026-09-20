@@ -48,6 +48,12 @@ class LLMConfig:
 
 
 @dataclass
+class AuthConfig:
+    token_secret: str
+    token_ttl: int = 7 * 24 * 3600  # token 有效期（秒）
+
+
+@dataclass
 class AppConfig:
     db_meta: DBConfig
     db_dw: DBConfig
@@ -55,6 +61,7 @@ class AppConfig:
     embedding: EmbeddingConfig
     es: ESConfig
     llm: LLMConfig
+    auth: AuthConfig
 
 
 # 从当前文件位置回到项目根目录（app/conf/app_config.py -> 项目根）

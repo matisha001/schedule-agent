@@ -1,21 +1,21 @@
 # 赛事管理 Agent 配置
 # 复制 .env.example 为 .env 并填写真实密钥
 
-# 元数据库：存放表结构元数据（column_info/table_info）、赛事/球队字典等知识库
+# 元数据库 schedule_meta：知识库元数据（column_info/metric_info/value_info，问数 Agent 用）
 db_meta:
   host: localhost
   port: 3306
-  user: your_user
-  password: your_password
-  database: meta
+  user: buyige
+  password: buyige3521
+  database: schedule_meta
 
-# 数据仓库：存放赛事事实数据（比赛、赛程、比分、排名）
+# 数据仓库 schedule_dw：赛事业务数据（app_user/tournament/team/player/schedule 等 8 张业务表）
 db_dw:
   host: localhost
   port: 3306
-  user: your_user
-  password: your_password
-  database: dw
+  user: buyige
+  password: buyige3521
+  database: schedule_dw
 
 qdrant:
   host: localhost
@@ -36,3 +36,8 @@ llm:
   model_name: Pro/zai-org/GLM-5.1
   api_key: ${oc.env:LLM_API_KEY}
   base_url: https://api.siliconflow.cn/v1
+
+# 手机号登录 token 签名密钥（生产环境务必通过 .env 设置 TOKEN_SECRET）
+auth:
+  token_secret: ${oc.env:TOKEN_SECRET,dev-token-secret-change-me}
+  token_ttl: 604800

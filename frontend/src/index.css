@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+/* 本项目整套设计为浅色官网/后台：禁止跟随系统 prefers-color-scheme 自动切换，
+   dark: 变体仅在根元素手动挂载 .dark 类时才生效（当前未使用），避免深浅割裂。 */
+@custom-variant dark (&:where(.dark, .dark *));

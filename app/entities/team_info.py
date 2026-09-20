@@ -1,17 +1,12 @@
-"""纯业务实体：球队信息。
-
-初始设计，字段待用户后续补充确认（教练、主场、球衣色等）。
-"""
+"""纯业务实体：报名队伍（V3 定稿）。"""
 
 from dataclasses import dataclass
 
 
 @dataclass
 class TeamInfo:
-    id: str
+    tournament_id: int
     name: str
-    sport: str
-    short_name: str
-    region: str
-    home_venue: str
-    description: str
+    status: int = 0  # 0待审核 1已确认 2已驳回 3已取消
+    id: int | None = None
+    created_at: str | None = None

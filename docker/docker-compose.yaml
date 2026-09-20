@@ -1,0 +1,42 @@
+# 赛事管理 Agent 基础设施
+# 启动：cd docker && docker-compose up -d
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: tournament-mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: your_password
+      MYSQL_USER: your_user
+      MYSQL_PASSWORD: your_password
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  elasticsearch:
+    build: ./elasticsearch
+    container_name: tournament-es
+    ports:
+      - "9200:9200"
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.16
+    container_name: tournament-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+volumes:
+  mysql_data:
+  es_data:
+  qdrant_data:

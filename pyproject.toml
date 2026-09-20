@@ -1,0 +1,28 @@
+[project]
+name = "schedule-agent"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "asyncmy>=0.2.14",
+    "elasticsearch[async]>=9.5.1",
+    "fastapi[standard]>=0.141.1",
+    "jieba>=0.42.1",
+    "langchain>=1.4.1",
+    "langchain-openai>=1.6.2",
+    "langgraph>=1.2.11",
+    "loguru>=0.7.3",
+    "omegaconf>=2.3.1",
+    "python-dotenv>=1.2.3",
+    "qdrant-client>=1.19.1",
+    "sqlalchemy>=2.0.54",
+    "uvicorn>=0.53.0",
+]
+
+[[tool.uv.index]]
+url = "https://mirrors.aliyun.com/pypi/simple/"
+default = true
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.8",
+]

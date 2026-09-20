@@ -1,0 +1,24 @@
+"""SSE 流式问数路由。"""
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+from starlette.responses import StreamingResponse
+
+from app.api.dependencies import get_query_service
+from app.api.schemas.query_schema import QuerySchema
+from app.services.query_service import QueryService
+
+query_router = APIRouter()
+
+
+@query_router.post("/api/query")
+async def query_handler(
+    payload: QuerySchema,
+    query_service: Annotated[QueryService, Depends(get_query_service)],
+):
+    return StreamingResponse(
+        query_service.query(payload.query),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

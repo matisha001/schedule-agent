@@ -1,0 +1,10 @@
+校验 SQL 是否安全且语义正确。
+检查项：
+1. 是否为只读 SELECT（含 WITH ... SELECT）
+2. 是否存在明显的语法问题
+3. 字段名是否来自给定 schema
+
+输出 JSON：{{"valid": true/false, "error": "若无效，说明原因"}}
+
+SQL：{sql}
+Schema：{table_infos}

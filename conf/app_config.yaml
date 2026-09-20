@@ -1,0 +1,38 @@
+# 赛事管理 Agent 配置
+# 复制 .env.example 为 .env 并填写真实密钥
+
+# 元数据库：存放表结构元数据（column_info/table_info）、赛事/球队字典等知识库
+db_meta:
+  host: localhost
+  port: 3306
+  user: your_user
+  password: your_password
+  database: meta
+
+# 数据仓库：存放赛事事实数据（比赛、赛程、比分、排名）
+db_dw:
+  host: localhost
+  port: 3306
+  user: your_user
+  password: your_password
+  database: dw
+
+qdrant:
+  host: localhost
+  port: 6333
+  embedding_size: 1024
+
+embedding:
+  model: BAAI/bge-large-zh-v1.5
+  base_url: https://api.siliconflow.cn/v1
+  api_key: ${oc.env:LLM_API_KEY}
+
+es:
+  host: localhost
+  port: 9200
+  index_name: tournament_agent
+
+llm:
+  model_name: Pro/zai-org/GLM-5.1
+  api_key: ${oc.env:LLM_API_KEY}
+  base_url: https://api.siliconflow.cn/v1

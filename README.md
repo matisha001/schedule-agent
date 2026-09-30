@@ -19,7 +19,8 @@
       │ POST /api/query (SSE)
 后端 (FastAPI)
   Router → Service → LangGraph 工作流
-  节点链：提取关键词 → 多路召回 → 生成 SQL → 校验 →(修正/执行)→ 结束
+  节点链：提取关键词 → 三路并行召回（字段/指标/取值）→ 合并 → 双路过滤（表/指标）
+        → 补上下文 → 生成 SQL → EXPLAIN 校验 →(修正/执行)→ 结束
       │
 Repository 层
   MySQL(meta)  MySQL(dw)  Qdrant  Elasticsearch
@@ -41,12 +42,12 @@ Repository 层
 │   ├── agent/
 │   │   ├── llm.py                 # LLM 单例
 │   │   ├── state.py / context.py  # State（业务数据） / Context（依赖注入）
-│   │   ├── graph.py               # LangGraph 图定义
-│   │   └── nodes/                 # 6 个图节点
-│   ├── services/                  # QueryService：图编排 + SSE
+│   │   ├── graph.py               # LangGraph 图定义（12 节点）
+│   │   └── nodes/                 # 12 个图节点
+│   ├── services/                  # QueryService：图编排 + SSE / MetaKnowledgeService：知识库构建编排
 │   ├── api/                       # lifespan / dependencies / router / schema
 │   ├── prompt/                    # Prompt 加载器
-│   └── scripts/                   # 离线知识库构建脚本
+│   └── scripts/                   # 脚本入口（只做参数解析与调度：seed / build）
 └── frontend/                      # React 聊天界面
 ```
 
@@ -59,8 +60,12 @@ cp .env.example .env   # 填入 LLM_API_KEY（SiliconFlow）
 # 1. 基础设施（MySQL / ES / Qdrant）
 cd docker && docker-compose up -d
 
-# 2. 离线构建知识库（首次或元数据变更后；当前为骨架，领域逻辑待补充）
-cd .. && uv run python -m app.scripts.build_meta_knowledge
+# 2. 离线构建知识库（首次或元数据变更后）
+#    先按 DW 结构生成 conf/meta_config.yaml（可手工修改表/字段/指标定义），
+#    再按配置灌入 meta 元数据，最后构建 Qdrant/ES 索引：
+cd .. && uv run python -m app.scripts.seed_meta_knowledge --init   # 生成配置（可选，改完表结构后重跑）
+uv run python -m app.scripts.seed_meta_knowledge                   # 按配置灌 meta（DW → meta）
+uv run python -m app.scripts.build_meta_knowledge                  # 构建 Qdrant/ES 索引
 
 # 3. 启动后端
 uv run uvicorn main:app --reload      # http://localhost:8000  （/health、/api/query）
@@ -69,14 +74,39 @@ uv run uvicorn main:app --reload      # http://localhost:8000  （/health、/api
 cd frontend && pnpm dev                # http://localhost:5173
 ```
 
-## 工作流（LangGraph）
+## 工作流（LangGraph，12 节点，对应 docs/ag.md）
 
 ```
-START → extract_keywords → recall → generate_sql → validate_sql
-                                                    │ 通过
-                                                    ▼
-                                               run_sql → END
-                                                    ▲
-                              正确 ← validate_sql 失败 → correct_sql ──┘
+START → extract_keywords
+        ├─→ recall_column（Qdrant 字段向量）
+        ├─→ recall_value（ES 取值字典全文）       三路并行
+        └─→ recall_metric（Qdrant 指标向量）
+              ↓
+        merge_retrieved_info（按字段/表组织，补主外键与表描述）
+        ├─→ filter_table（LLM 裁剪候选表与字段）  双路并行
+        └─→ filter_metric（LLM 裁剪候选指标）
+              ↓
+        add_extra_context（日期 + 数据库信息）
+              ↓
+        generate_sql → validate_sql（只读正则防线 + EXPLAIN）
+                        │ error 为空（校验通过）
+                        ▼
+                      run_sql → END（结果写回 state.result，SSE done 事件）
+                        ▲
+        correct_sql ←──┘ error 非空（修正后重入 run_sql）
 ```
+
+## 代码分层
+
+```
+scripts（入口/调度） → services（业务编排） → repositories（存储读写） → mappers（对象转换） → models（ORM）↔ 数据库
+                                                          ↘ entities（业务实体，与 ORM 模型分离）
+```
+
+- `app/entities`：业务实体层，统一表示表、字段、指标和值
+- `app/models`：ORM 模型层，定义元数据库表对应的 SQLAlchemy 模型
+- `app/repositories`：存储访问层，负责与底层存储（MySQL/Qdrant/ES）打交道
+- `app/services`：业务编排层，组织完整构建/查询流程（MetaKnowledgeService / QueryService）
+- `app/scripts`：脚本入口层，接收参数并启动流程
+- `app/conf`：程序内配置结构与配置加载（app_config.yaml / meta_config.yaml）
 

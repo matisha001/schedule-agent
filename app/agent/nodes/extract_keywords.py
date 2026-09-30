@@ -1,43 +1,57 @@
-"""节点：提取查询关键词（jieba + LLM 结构化提取）。"""
+"""
+关键词抽取节点
 
-import json
+负责从用户自然语言问题中识别检索线索
+后续字段召回 字段取值召回和指标召回都会基于这些关键词展开
+"""
 
-import jieba
-from langchain_core.output_parsers import JsonOutputParser
-from langchain_core.prompts import PromptTemplate
+import jieba.analyse
 from langgraph.runtime import Runtime
 
 from app.agent.context import TournamentAgentContext
-from app.agent.llm import llm
 from app.agent.state import TournamentAgentState
-from app.prompt.prompt_loader import load_prompt
-
-_STOP_WORDS = {"的", "了", "呢", "吗", "在", "是", "有", "和", "与", "及", "或", "请", "帮我", "一下", "哪些", "什么"}
+from app.core.log import logger
 
 
-async def extract_keywords(state: TournamentAgentState, runtime: Runtime[TournamentAgentContext]) -> dict:
+async def extract_keywords(
+    state: TournamentAgentState, runtime: Runtime[TournamentAgentContext]
+):
+    """抽取用户问题中的关键词，并通过流式输出反馈当前进度"""
+
+    step = "抽取关键词"
     writer = runtime.stream_writer
-    writer({"type": "progress", "step": "提取关键词", "status": "running"})
+    writer({"type": "progress", "step": step, "status": "running"})
 
-    query = state["query"]
-
-    # jieba 基础分词（离线兜底）
-    jieba_keywords = [w.strip() for w in jieba.cut_for_search(query) if w.strip() and w.strip() not in _STOP_WORDS]
-
-    # LLM 结构化提取
-    chain = PromptTemplate(
-        template=load_prompt("extract_keywords"),
-        input_variables=["query"],
-    ) | llm | JsonOutputParser()
-
-    llm_keywords: list[str] = []
     try:
-        raw = await chain.ainvoke({"query": query})
-        if isinstance(raw, list):
-            llm_keywords = [str(k).strip() for k in raw if str(k).strip()]
-    except json.JSONDecodeError:
-        writer({"type": "progress", "step": "提取关键词", "status": "warning", "message": "LLM 输出非 JSON，使用 jieba 结果"})
+        query = state["query"]
 
-    keywords = list(dict.fromkeys(jieba_keywords + llm_keywords))
-    writer({"type": "progress", "step": "提取关键词", "status": "success", "keywords": keywords})
-    return {"keywords": keywords}
+        # 只保留更可能承载业务含义的词性，减少“的、帮我、一下”这类无检索价值的噪声
+        allow_pos = (
+            "n",  # 名词: 队伍、赛事、赛程
+            "nr",  # 人名: 选手、领队
+            "ns",  # 地名: 场馆、城市
+            "nt",  # 机构团体名: 俱乐部、战队
+            "nz",  # 其他专有名词: 总决赛、季后赛
+            "v",  # 动词: 统计、对比、查询
+            "vn",  # 名动词: 报名、参赛、晋级
+            "a",  # 形容词: 新增、有效、激烈
+            "an",  # 名形词: 有效、异常
+            "eng",  # 英文: MVP、KDA、BO5
+            "i",  # 成语或习用语，避免遗漏整体表达
+            "l",  # 常用固定短语，例如“场均得分”
+        )
+
+        # extract_tags 会基于 TF-IDF 抽取关键词，并按 allowPOS 做词性过滤
+        keywords = jieba.analyse.extract_tags(query, allowPOS=allow_pos)
+
+        # 保留原始问题作为兜底检索入口，避免关键词切分不准时丢掉完整语义
+        # set 用来去重；顺序不参与后续判断，所以这里不依赖关键词顺序
+        keywords = list(set(keywords + [query]))
+
+        writer({"type": "progress", "step": step, "status": "success"})
+        logger.info(f"抽取关键词成功: {keywords}")
+        return {"keywords": keywords}
+    except Exception as e:
+        logger.error(f"抽取关键词失败: {e}")
+        writer({"type": "progress", "step": step, "status": "error"})
+        raise

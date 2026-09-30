@@ -5,7 +5,7 @@ requires-python = ">=3.14"
 dependencies = [
     "asyncmy>=0.2.14",
     "cryptography>=50.0.1",
-    "elasticsearch[async]>=9.5.1",
+    "elasticsearch[async]>=8.19,<9",
     "fastapi[standard]>=0.141.1",
     "jieba>=0.42.1",
     "langchain>=1.4.1",
@@ -25,5 +25,15 @@ default = true
 
 [dependency-groups]
 dev = [
+    "grandalf>=0.8",
     "ruff>=0.16.8",
 ]
+
+# 与 shopkeeper-agent 参考项目保持一致的 lint 规则
+[tool.ruff]
+line-length = 88
+target-version = "py314"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]

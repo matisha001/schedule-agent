@@ -1,0 +1,371 @@
+tables:
+- name: app_user
+  role: dim
+  description: 用户基础信息（含系统虚拟用户）
+  columns:
+  - name: id
+    role: pk
+    description: 自增主键
+    alias: []
+    sync: false
+  - name: guid
+    role: dimension
+    description: 平台 GUID
+    alias: []
+    sync: false
+  - name: nickname
+    role: dimension
+    description: 昵称
+    alias: []
+    sync: true
+  - name: phone
+    role: dimension
+    description: 手机号
+    alias: []
+    sync: true
+  - name: created_at
+    role: date
+    description: 创建时间
+    alias: []
+    sync: false
+- name: tournament
+  role: dim
+  description: 赛事主表：名称、时间、报名与比赛规则
+  columns:
+  - name: id
+    role: pk
+    description: 自增主键
+    alias: []
+    sync: false
+  - name: name
+    role: dimension
+    description: 赛事名称
+    alias: []
+    sync: true
+  - name: created_by
+    role: fk
+    description: 主办方用户 ID
+    alias: []
+    sync: false
+  - name: game
+    role: dimension
+    description: 游戏项目
+    alias: []
+    sync: true
+  - name: game_maps
+    role: dimension
+    description: 可选地图(自由文本)
+    alias: []
+    sync: false
+  - name: team_mode
+    role: dimension
+    description: 1团队赛 2个人赛
+    alias: []
+    sync: true
+  - name: start_time
+    role: date
+    description: 赛事开始
+    alias: []
+    sync: false
+  - name: end_time
+    role: date
+    description: 赛事结束
+    alias: []
+    sync: false
+  - name: reg_start_time
+    role: date
+    description: 报名开始
+    alias: []
+    sync: false
+  - name: reg_end_time
+    role: date
+    description: 报名结束
+    alias: []
+    sync: false
+  - name: max_team_members
+    role: measure
+    description: 队伍最大成员数
+    alias: []
+    sync: false
+  - name: max_teams
+    role: measure
+    description: 队伍数量上限
+    alias: []
+    sync: false
+  - name: regist_method
+    role: dimension
+    description: 1办赛者代报名 2选手自主报名
+    alias: []
+    sync: true
+  - name: contact_requirement
+    role: dimension
+    description: 联系方式要求(自由文本)
+    alias: []
+    sync: false
+  - name: rule_info
+    role: dimension
+    description: 比赛规则(自由文本)
+    alias: []
+    sync: false
+  - name: status
+    role: dimension
+    description: 0草稿 1已发布 2报名中 3比赛中 4已结束
+    alias: []
+    sync: true
+  - name: created_at
+    role: date
+    description: 创建时间
+    alias: []
+    sync: false
+  - name: updated_at
+    role: date
+    description: 更新时间
+    alias: []
+    sync: false
+- name: tournament_phase
+  role: dim
+  description: 赛事阶段：初赛/总决赛等
+  columns:
+  - name: id
+    role: pk
+    description: 自增主键
+    alias: []
+    sync: false
+  - name: tournament_id
+    role: fk
+    description: 所属赛事
+    alias: []
+    sync: false
+  - name: name
+    role: dimension
+    description: 阶段名称(初赛/总决赛)
+    alias: []
+    sync: true
+  - name: start_time
+    role: date
+    description: 阶段开始
+    alias: []
+    sync: false
+  - name: end_time
+    role: date
+    description: 阶段结束
+    alias: []
+    sync: false
+  - name: status
+    role: dimension
+    description: 阶段状态 0未开始 1进行中 2已结束
+    alias: []
+    sync: true
+- name: team
+  role: dim
+  description: 报名队伍（个人赛按单人队伍复用）
+  columns:
+  - name: id
+    role: pk
+    description: 自增主键
+    alias: []
+    sync: false
+  - name: tournament_id
+    role: fk
+    description: 报名的赛事
+    alias: []
+    sync: false
+  - name: name
+    role: dimension
+    description: 队伍名
+    alias: []
+    sync: true
+  - name: status
+    role: dimension
+    description: 0待审核 1已确认 2已驳回 3已取消
+    alias: []
+    sync: true
+  - name: created_at
+    role: date
+    description: 报名时间
+    alias: []
+    sync: false
+- name: player
+  role: dim
+  description: 参赛选手
+  columns:
+  - name: id
+    role: pk
+    description: 自增主键
+    alias: []
+    sync: false
+  - name: team_id
+    role: fk
+    description: 所属队伍
+    alias: []
+    sync: false
+  - name: user_id
+    role: fk
+    description: 平台用户(可空;TEMP 可指虚拟 user id=1)
+    alias: []
+    sync: false
+  - name: nickname
+    role: dimension
+    description: 昵称
+    alias: []
+    sync: true
+  - name: is_captain
+    role: dimension
+    description: 是否队长
+    alias: []
+    sync: true
+  - name: status
+    role: dimension
+    description: AGREED/PENDING/REJECTED
+    alias: []
+    sync: true
+  - name: player_type
+    role: dimension
+    description: TEMP临时 REAL正式
+    alias: []
+    sync: true
+  - name: created_at
+    role: date
+    description: 加入时间
+    alias: []
+    sync: false
+- name: schedule
+  role: fact
+  description: 赛程/对局：对阵、比分、轮次与状态
+  columns:
+  - name: id
+    role: pk
+    description: 自增主键
+    alias: []
+    sync: false
+  - name: tournament_id
+    role: fk
+    description: 所属赛事
+    alias: []
+    sync: false
+  - name: phase_id
+    role: fk
+    description: 所属阶段
+    alias: []
+    sync: false
+  - name: round
+    role: dimension
+    description: 轮次序号
+    alias: []
+    sync: true
+  - name: round_name
+    role: dimension
+    description: 轮次名(总决赛)
+    alias: []
+    sync: true
+  - name: bo
+    role: dimension
+    description: BO局数(1/3/5)
+    alias: []
+    sync: true
+  - name: is_final
+    role: dimension
+    description: 是否决赛
+    alias: []
+    sync: true
+  - name: home_team_id
+    role: fk
+    description: 主队
+    alias: []
+    sync: false
+  - name: away_team_id
+    role: fk
+    description: 客队
+    alias: []
+    sync: false
+  - name: home_score
+    role: measure
+    description: 主队比分
+    alias: []
+    sync: false
+  - name: away_score
+    role: measure
+    description: 客队比分
+    alias: []
+    sync: false
+  - name: status
+    role: dimension
+    description: 0未开赛 1进行中 2已结束 3已取消
+    alias: []
+    sync: true
+  - name: start_time
+    role: date
+    description: 开赛时间
+    alias: []
+    sync: false
+  - name: created_at
+    role: date
+    description: 创建时间
+    alias: []
+    sync: false
+  - name: updated_at
+    role: date
+    description: 更新时间
+    alias: []
+    sync: false
+
+metrics:
+- name: 报名队伍数
+  agg_type: count
+  expression: COUNT(*)
+  description: 报名队伍数量。
+  alias:
+  - 队伍数
+  - 参赛队伍数
+  - 报名队数
+  table_id: team
+- name: 队伍人数
+  agg_type: count
+  expression: COUNT(*)
+  description: 参赛选手总人数。
+  alias:
+  - 选手人数
+  - 参赛人数
+  - 队员数
+  table_id: player
+- name: 赛事数量
+  agg_type: count
+  expression: COUNT(*)
+  description: 赛事总数。
+  alias:
+  - 比赛数量
+  - 赛事总数
+  table_id: tournament
+- name: 对局数量
+  agg_type: count
+  expression: COUNT(*)
+  description: 赛程对局总数。
+  alias:
+  - 比赛场次
+  - 对局数
+  - 场次
+  table_id: schedule
+- name: 总得分
+  agg_type: sum
+  expression: SUM(home_score + away_score)
+  description: 所有对局双方得分总和。
+  alias:
+  - 总比分
+  - 总得分和
+  table_id: schedule
+- name: 场均得分
+  agg_type: avg
+  expression: AVG(home_score + away_score)
+  description: 每场对局双方得分平均值。
+  alias:
+  - 平均得分
+  - 场均分
+  table_id: schedule
+- name: 单场最高分
+  agg_type: max
+  expression: MAX(home_score + away_score)
+  description: 单场对局双方得分之和的最大值。
+  alias:
+  - 最高得分
+  - 单场最高
+  table_id: schedule

@@ -14,12 +14,18 @@ interface Message {
 }
 
 const STEP_LABELS: Record<string, string> = {
-  extract_keywords: "提取关键词",
-  recall: "召回知识",
-  generate_sql: "生成 SQL",
-  validate_sql: "校验 SQL",
-  run_sql: "执行查询",
-  correct_sql: "修正 SQL",
+  抽取关键词: "提取关键词",
+  召回字段信息: "召回字段信息",
+  召回指标信息: "召回指标信息",
+  召回字段取值: "召回字段取值",
+  合并召回信息: "合并召回信息",
+  过滤表信息: "过滤表信息",
+  过滤指标信息: "过滤指标信息",
+  添加额外上下文: "补充上下文",
+  生成SQL: "生成 SQL",
+  校验SQL: "校验 SQL",
+  执行SQL: "执行查询",
+  校正SQL: "修正 SQL",
 };
 
 let msgSeq = 0;

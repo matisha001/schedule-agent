@@ -1,10 +1,19 @@
 -- ============================================================
 -- schedule_meta 知识库表 DDL（问数 Agent 元数据）
 -- 库：schedule_meta
--- 表：column_info / metric_info / value_info
+-- 表：table_info / column_info / metric_info / value_info
 -- ============================================================
 
 USE schedule_meta;
+
+-- 表元数据：业务表名/角色/描述，供合并节点组装表结构上下文
+CREATE TABLE IF NOT EXISTS table_info (
+    id          VARCHAR(64)  NOT NULL COMMENT '主键（表名，与 column_info.table_id 一致）',
+    name        VARCHAR(128) NOT NULL COMMENT '展示名',
+    role        VARCHAR(32)  DEFAULT NULL COMMENT 'dim/fact',
+    description TEXT         DEFAULT NULL COMMENT '表业务说明',
+    PRIMARY KEY (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '表元数据';
 
 -- 字段元数据：描述业务表的一个字段，供 LLM 生成 SQL 时理解语义
 CREATE TABLE IF NOT EXISTS column_info (

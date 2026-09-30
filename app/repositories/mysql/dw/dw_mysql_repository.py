@@ -39,6 +39,74 @@ class DWMySQLRepository:
             columns = list(result.keys())
             return columns, [dict(zip(columns, row)) for row in rows]
 
+    async def get_db_info(self) -> dict:
+        """读取当前数仓的方言和版本，供 SQL 生成提示词使用（docs/ag.md 节点 8）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(text("SELECT version()"))
+            version = result.scalar()
+            dialect = session.bind.dialect.name
+            return {"dialect": dialect, "version": version}
+
+    async def validate(self, sql: str) -> None:
+        """用 EXPLAIN 让数据库提前解析 SQL，发现语法/表名/字段名错误（docs/ag.md 节点 10）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            await session.execute(text(f"EXPLAIN {sql}"))
+
+    # ---------- 离线构建辅助：元数据库建库/取值采样（docs/ag.md 8.2） ----------
+
+    async def get_table_schema(self, tables: list[str]) -> list[dict]:
+        """读取指定表的字段结构（类型/注释/主外键），供离线构建推导字段元数据。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(
+                text(
+                    "SELECT TABLE_NAME AS table_name, COLUMN_NAME AS column_name, "
+                    "COLUMN_TYPE AS column_type, DATA_TYPE AS data_type, COLUMN_COMMENT AS comment "
+                    "FROM information_schema.COLUMNS "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN :tables "
+                    "ORDER BY TABLE_NAME, ORDINAL_POSITION"
+                ),
+                {"tables": tuple(tables)},
+            )
+            rows = result.mappings().fetchall()
+
+            pk_rows = await session.execute(
+                text(
+                    "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND CONSTRAINT_NAME = 'PRIMARY'"
+                )
+            )
+            pk_set = {(r["TABLE_NAME"], r["COLUMN_NAME"]) for r in pk_rows.mappings().fetchall()}
+
+            fk_rows = await session.execute(
+                text(
+                    "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.KEY_COLUMN_USAGE "
+                    "WHERE TABLE_SCHEMA = DATABASE() AND REFERENCED_TABLE_NAME IS NOT NULL"
+                )
+            )
+            fk_set = {(r["TABLE_NAME"], r["COLUMN_NAME"]) for r in fk_rows.mappings().fetchall()}
+
+        return [
+            {
+                "table": r["table_name"], "column": r["column_name"],
+                "type": r["column_type"], "data_type": r["data_type"],
+                "comment": r["comment"] or "",
+                "is_pk": (r["table_name"], r["column_name"]) in pk_set,
+                "is_fk": (r["table_name"], r["column_name"]) in fk_set,
+            }
+            for r in rows
+        ]
+
+    async def get_column_values(self, table: str, column: str, limit: int = 8) -> list[str]:
+        """抽样取字段真实取值（去重，最多 limit 个），供元数据入库和检索链路复用。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(
+                text(
+                    f"SELECT DISTINCT `{column}` FROM `{table}` "
+                    f"WHERE `{column}` IS NOT NULL LIMIT {int(limit)}"
+                )
+            )
+            return [str(r[0]) for r in result.fetchall()]
+
     # ---------- 赛事 ----------
     async def list_tournaments(self) -> list[TournamentInfo]:
         """赛事列表。"""

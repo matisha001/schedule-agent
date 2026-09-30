@@ -33,7 +33,7 @@ es:
   index_name: tournament_agent
 
 llm:
-  model_name: Pro/zai-org/GLM-5.1
+  model_name: deepseek-ai/DeepSeek-V4-Flash
   api_key: ${oc.env:LLM_API_KEY}
   base_url: https://api.siliconflow.cn/v1
 

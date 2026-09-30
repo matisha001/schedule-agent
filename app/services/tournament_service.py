@@ -465,6 +465,10 @@ class TournamentService:
 
     async def create_schedule(self, user_id: int, tournament_id: int, payload: dict[str, Any]) -> dict[str, Any]:
         await self._require_creator(user_id, tournament_id)
+        if payload.get("phase_id") is None:
+            # 未指定阶段时自动补齐一个赛段（已有则复用，避免重复创建）
+            phase = await self._ensure_default_phase(tournament_id)
+            payload = {**payload, "phase_id": phase.id}
         await self._validate_schedule_refs(tournament_id, payload)
         schedule = ScheduleInfo(
             id=0,
@@ -628,6 +632,19 @@ class TournamentService:
     async def _creator_nickname(self, user_id: int) -> str:
         user = await repo.get_user(user_id)
         return user.nickname if user else ""
+
+    async def _ensure_default_phase(self, tournament_id: int) -> TournamentPhaseInfo:
+        """赛事尚无阶段时自动创建一个默认赛段；已有阶段则复用第一个，避免重复创建。"""
+        existing = await repo.list_phases(tournament_id)
+        if existing:
+            return existing[0]
+        phase = TournamentPhaseInfo(
+            id=id_generator.next_id(),
+            tournament_id=tournament_id,
+            name="默认赛段",
+            status=0,
+        )
+        return await repo.create_phase(phase)
 
     async def _validate_schedule_refs(self, tournament_id: int, payload: dict[str, Any]) -> None:
         phase_id = payload.get("phase_id")

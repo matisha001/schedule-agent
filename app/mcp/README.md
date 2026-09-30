@@ -8,8 +8,8 @@
         ⇄ httpx HTTP ⇄ 赛事后端 http://localhost:8000
 ```
 
-- **复用后端权限矩阵**：未登录 = guest（仅公开数据）；通过环境变量注入登录 token 后按角色（player/organizer/operator/super_admin）访问。
-- **只读能力**：提供赛事/阶段/队伍/选手/对局的结构化查询与预制提示词，不暴露问数 Agent 与登录写操作。
+- **强制鉴权**：必须配置 `TOURNAMENT_API_TOKEN`（登录接口返回的 token），未配置则 MCP 服务拒绝启动。所有调用以该 token 对应用户身份执行，权限与后端一致。
+- **比赛主流程**：创建赛事→发布→报名→审核→排对局→录比分，以及用户资料（昵称/密码）修改。
 
 ## 快速开始
 
@@ -29,20 +29,39 @@ uv run python -m app.mcp.server --transport streamable-http --host 127.0.0.1 --p
 | 变量 | 默认值 | 说明 |
 |---|---|---|
 | `TOURNAMENT_API_BASE` | `http://localhost:8000` | 赛事后端地址 |
-| `TOURNAMENT_API_TOKEN` | 空 | 预置登录 token；不填则游客身份（仅公开数据） |
+| `TOURNAMENT_API_TOKEN` | **无（必填）** | 登录接口返回的 token；未配置则服务拒绝启动 |
 
 ## 提供的 MCP 工具
+
+### 读操作（按登录角色）
 
 | 工具 | 说明 |
 |---|---|
 | `get_me()` | 当前用户信息 |
+| `update_profile(nickname)` | **修改昵称** |
+| `update_password(old, new)` | **修改密码** |
 | `list_tournaments(scope)` | 赛事列表（published / mine） |
 | `get_tournament(tournament_id)` | 赛事详情（配置+阶段+队伍+我的队伍） |
 | `list_phases(tournament_id)` | 阶段列表 |
 | `list_teams(tournament_id)` | 队伍列表（含选手） |
-| `my_tournaments()` | 我报名的赛事（需登录 token） |
+| `my_tournaments()` | 我报名的赛事 |
 | `list_schedules(tournament_id)` | 对局/赛程列表（含比分） |
 | `list_presets()` | 预制问数提示词（按角色过滤） |
+
+### 比赛主流程（写操作，需登录 token 且为对应角色/创建者）
+
+| 工具 | 说明 | 后端 API |
+|---|---|---|
+| `create_tournament(...)` | **快速创建赛事**（草稿，需再发布） | `POST /api/tournaments` |
+| `transition_tournament(id, action)` | **赛事状态流转** publish/open/close/start/finish | `POST /api/tournaments/{id}/transition` |
+| `create_phase(id, name, ...)` | 创建阶段 | `POST /api/tournaments/{id}/phases` |
+| `register_team(id, name, players)` | **快速报名**（选手自主） | `POST /api/tournaments/{id}/teams` |
+| `register_team_by_organizer(id, name, players)` | **办赛者代报名** | `POST /api/tournaments/{id}/admin-teams` |
+| `review_team(team_id, status)` | **队伍审核**（确认/驳回） | `PATCH /api/teams/{id}/status` |
+| `create_schedule(id, home, away, ...)` | **创建对局** | `POST /api/tournaments/{id}/schedules` |
+| `update_schedule(id, score, ...)` | **录入比分/更新对局** | `PATCH /api/schedules/{id}` |
+
+> 写操作权限与后端一致：创建/流转/审核/对局仅赛事创建者；自主报名需赛事处于报名中且非该赛事创建者。
 
 ## 接入 MCP 客户端
 

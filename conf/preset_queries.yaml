@@ -1,79 +1,79 @@
 # 赛事问数助手 · 预制提示词（docs/permission-design.md 第 7 节）
 # - GET /api/query/presets 按「登录态 + 角色」服务端过滤后返回（未登录 = guest）
 # - 每种角色默认恰好 4 条（visible_to 精确指定），按 order 排序
-# - 模板中 {赛事名} 为参数占位，前端弹赛事选择器后拼接完整 query
+# - 模板中 {{赛事名}} 为参数占位（前端弹赛事选择器后替换，注意是双花括号）
 # - 点击后与手输完全等价，仍走问数三层防线
 
 preset_queries:
   # ========== guest 游客（未登录，公开数据分析） ==========
   - id: g1
-    title: 什么比赛最火？
-    template: 现在最火爆的比赛是哪个，有多少队伍报名了？
+    title: 哪个比赛现在最火？
+    template: 现在最火爆、报名队伍最多的比赛是哪个？
     visible_to: [guest]
     order: 1
   - id: g2
-    title: 哪场打得最激烈？
-    template: 哪场比赛的比分最高、打得最激烈？
+    title: 哪场打得最精彩？
+    template: 最近打完的比赛里，哪场比分咬得最紧、最精彩？
     visible_to: [guest]
     order: 2
   - id: g3
-    title: 现在有哪些比赛可以看？
-    template: 现在有哪些比赛正在报名或进行中？
+    title: 现在有比赛能看吗？
+    template: 有哪些比赛正在报名或者正在进行中？
     visible_to: [guest]
     order: 3
   - id: g4
-    title: 最近战况如何？
-    template: 最近打完的比赛里，哪场得分最高？
+    title: 今日战况速报
+    template: 今天打完的比赛都有哪些？各场比分怎么样？
     visible_to: [guest]
     order: 4
 
   # ========== player 玩家（登录，我的比赛分析） ==========
   - id: p1
-    title: 我的比赛概览
-    template: 我报名参加的比赛有哪些，各自是什么状态？
+    title: 我的比赛仪表盘
+    template: 我报名参加的比赛有哪些？分别打到什么阶段了？
     visible_to: [player]
     order: 1
   - id: p2
-    title: 我的近三场比赛分析
-    template: 我最近参加的 3 场比赛分别是什么赛事、我所在队伍、对局和比分？
+    title: 我最近的战绩
+    template: 我最近参加的几场对局分别对阵谁、比分多少？
     visible_to: [player]
     order: 2
   - id: p3
-    title: 我的队伍分析
-    template: 我所在队伍的状态和成员组成？
+    title: 我的队伍现在咋样？
+    template: 我所在队伍目前状态如何？都有哪些成员？
     visible_to: [player]
     order: 3
   - id: p4
-    title: 我的手机号
-    template: 我的手机号是多少？
+    title: 我的账号信息
+    template: 我绑定的手机号是多少？
     visible_to: [player]
     order: 4
 
   # ========== organizer 办赛者（登录，赛事运营分析，涉选手/队伍/用户域强制 created_by=uid） ==========
   - id: o1
-    title: 我的赛事报名分析
-    template: 我举办的比赛各自的报名队伍数、选手数、队伍状态分布？
+    title: 我的办赛成绩单
+    template: 我办的比赛各有多少队伍报名、多少选手参赛？队伍状态怎么分布的？
     visible_to: [organizer]
     order: 1
   - id: o2
-    title: 某场比赛报名分析
-    template: "{赛事名} 的报名情况：队伍、选手、待审核数量？"
+    title: 某赛事报名热不热？
+    template: "{{赛事名}} 报名情况怎么样？多少队伍、多少选手，还有多少在待审核？"
     params:
       - key: 赛事名
         source: tournaments
     visible_to: [organizer]
     order: 2
   - id: o3
-    title: 某场比赛赛程分析
-    template: "{赛事名} 的赛程进展：各阶段对局完成情况、比分最高场？"
+    title: 某赛事赛程走到哪了
+    template: "{{赛事名}} 赛程进展如何？哪个阶段打完了？比分最高的是哪一场？"
     params:
       - key: 赛事名
         source: tournaments
     visible_to: [organizer]
     order: 3
   - id: o4
-    title: 某场比赛选手信息
-    template: "{赛事名} 的参赛选手有哪些？"
+    title: 某赛事都有谁在打
+    template: "{{赛事名}} 的参赛选手都有谁？"
     params:
       - key: 赛事名
         source: tournaments
@@ -82,44 +82,44 @@ preset_queries:
 
   # ========== operator 运营（登录，平台分析） ==========
   - id: op1
-    title: 平台赛事汇总
-    template: 全部比赛的报名、赛程、比分汇总统计？
+    title: 平台大盘一眼看尽
+    template: 全平台所有比赛的报名、赛程、比分整体情况汇总一下？
     visible_to: [operator]
     order: 1
   - id: op2
-    title: 平台报名排行
-    template: 报名队伍数最多的 10 个比赛有哪些？
+    title: 最热门赛事 TOP10
+    template: 按报名队伍数排名，全平台最火的 10 场比赛是哪些？
     visible_to: [operator]
     order: 2
   - id: op3
-    title: 平台赛程分析
-    template: 全部比赛的赛程完成进度如何？
+    title: 赛程跑完了吗？
+    template: 全平台比赛的赛程整体完成进度如何？
     visible_to: [operator]
     order: 3
   - id: op4
-    title: 注册用户数
-    template: 平台注册用户有多少？
+    title: 现在平台多少人？
+    template: 目前平台注册用户一共有多少？
     visible_to: [operator]
     order: 4
 
   # ========== super_admin 超管（登录，平台 + 用户全量分析） ==========
   - id: s1
-    title: 平台赛事汇总
-    template: 全部比赛的报名、赛程、比分汇总统计？
+    title: 平台全局概览
+    template: 全平台比赛的报名、赛程、比分整体汇总？
     visible_to: [super_admin]
     order: 1
   - id: s2
-    title: 注册用户数
-    template: 平台注册用户有多少？
+    title: 用户规模
+    template: 平台注册用户总数是多少？
     visible_to: [super_admin]
     order: 2
   - id: s3
-    title: 用户角色分布
-    template: 各角色用户数量分布是怎么样的？
+    title: 都是些什么角色？
+    template: 平台里玩家、办赛者、运营各有多少人？
     visible_to: [super_admin]
     order: 3
   - id: s4
-    title: 全量报名分析
-    template: 全部比赛的报名队伍与选手统计？
+    title: 报名全景
+    template: 全平台所有比赛的报名队伍数和选手总数统计？
     visible_to: [super_admin]
     order: 4

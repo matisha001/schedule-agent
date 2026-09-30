@@ -11,6 +11,33 @@ from omegaconf import OmegaConf
 
 
 @dataclass
+class File:
+    """文件日志配置"""
+
+    enable: bool
+    level: str
+    path: str
+    rotation: str
+    retention: str
+
+
+@dataclass
+class Console:
+    """控制台日志配置"""
+
+    enable: bool
+    level: str
+
+
+@dataclass
+class LoggingConfig:
+    """日志总配置"""
+
+    file: File
+    console: Console
+
+
+@dataclass
 class DBConfig:
     host: str
     port: int
@@ -55,6 +82,7 @@ class AuthConfig:
 
 @dataclass
 class AppConfig:
+    logging: LoggingConfig
     db_meta: DBConfig
     db_dw: DBConfig
     qdrant: QdrantConfig

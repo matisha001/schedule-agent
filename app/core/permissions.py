@@ -73,7 +73,7 @@ def row_scope_rules(role: str, user_id: int | None) -> str:
         )
     if role != "super_admin":
         lines.append(
-            "- 手机号/guid 等敏感字段只能查询自己的记录：查询 app_user 表时必须添加 `app_user.id = {当前用户id}` 条件"
+            f"- 手机号/guid 等敏感字段只能查询自己的记录：查询 app_user 表时必须添加 `app_user.id = {user_id}` 条件"
         )
     lines.append("- 严禁使用 app_user.password_hash 字段")
     return "\n".join(lines) if lines else "无额外行级限制"

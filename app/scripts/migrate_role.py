@@ -13,10 +13,10 @@
 
 import asyncio
 
-from loguru import logger
 from sqlalchemy import text
 
 from app.clients.mysql_client_manager import dw_mysql_client_manager
+from app.core.log import logger
 
 
 async def _column_exists(session, table: str, column: str) -> bool:

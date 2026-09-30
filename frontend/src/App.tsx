@@ -12,6 +12,8 @@ import AskPage from "./pages/portal/AskPage";
 import AdminTournamentsPage from "./pages/admin/AdminTournamentsPage";
 import AdminTournamentDetailPage from "./pages/admin/AdminTournamentDetailPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
+import AdminApplicationsPage from "./pages/admin/AdminApplicationsPage";
+import AccountPage from "./pages/portal/AccountPage";
 
 export default function App() {
   return (
@@ -34,6 +36,14 @@ export default function App() {
           }
         />
         <Route path="ask" element={<AskPage />} />
+        <Route
+          path="account"
+          element={
+            <RequireAuth>
+              <AccountPage />
+            </RequireAuth>
+          }
+        />
       </Route>
 
       {/* 管理后台（办赛者 / 运营 / 超管视角） */}
@@ -47,6 +57,15 @@ export default function App() {
       >
         <Route index element={<AdminTournamentsPage />} />
         <Route path="tournaments/:id" element={<AdminTournamentDetailPage />} />
+        {/* 办赛申请审批：超管/运营 */}
+        <Route
+          path="applications"
+          element={
+            <RequireRole roles={["operator", "super_admin"]}>
+              <AdminApplicationsPage />
+            </RequireRole>
+          }
+        />
         {/* 用户权限管理：仅超级管理员 */}
         <Route
           path="users"

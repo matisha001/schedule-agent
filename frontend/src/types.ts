@@ -174,3 +174,23 @@ export interface MyTournamentItem extends Tournament {
   my_team: Team | null;
   team_count: number;
 }
+
+
+/* ================= 办赛申请 ================= */
+
+export interface OrganizerApplication {
+  id: number;
+  user_id: number;
+  nickname: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  reason?: string | null;
+  reviewed_by?: number | null;
+  reviewed_at?: string | null;
+  created_at?: string | null;
+}
+
+export const APPLICATION_STATUS_LABELS: Record<string, string> = {
+  PENDING: "待审批",
+  APPROVED: "已通过",
+  REJECTED: "已驳回",
+};

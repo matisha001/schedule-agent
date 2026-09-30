@@ -72,6 +72,15 @@ async def generate_sql(
                 "query": query,
             }
         )
+        # 兜底：若模型仍输出占位符（{当前用户id} 等），确定性替换为真实用户 id，
+        # 保证 validate_sql 的“app_user.id = 真实id”确定性校验可通过
+        user_id = runtime.context.get("user_id")
+        if user_id is not None:
+            result = (
+                result.replace("{当前用户id}", str(user_id))
+                .replace("{当前用户}", str(user_id))
+                .replace("{current_user_id}", str(user_id))
+            )
         logger.info(f"生成的SQL：{result}")
         writer({"type": "progress", "step": step, "status": "success"})
         return {"sql": result}

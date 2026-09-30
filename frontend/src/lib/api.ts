@@ -84,9 +84,31 @@ export const authApi = {
       body: { code, phone, password },
       auth: false,
     }),
+  updateProfile: (nickname: string) =>
+    api<import("../types").User>("/api/auth/profile", {
+      method: "PATCH",
+      body: { nickname },
+    }),
+  updatePassword: (old_password: string, new_password: string) =>
+    api<{ ok: boolean }>("/api/auth/password", {
+      method: "PATCH",
+      body: { old_password, new_password },
+    }),
+  deleteAccount: () => api<{ ok: boolean }>("/api/auth/account", { method: "DELETE" }),
 };
 
-/** 用户权限管理（仅超级管理员） */
+/** 办赛申请（玩家 → 办赛者） */
+export const applyApi = {
+  applyOrganizer: (reason?: string) =>
+    api<import("../types").OrganizerApplication>("/api/apply/organizer", {
+      method: "POST",
+      body: { reason: reason ?? null },
+    }),
+  myStatus: () =>
+    api<import("../types").OrganizerApplication | null>("/api/apply/status"),
+};
+
+/** 用户权限管理（仅超级管理员）/ 办赛申请审批（超管/运营） */
 export const adminApi = {
   users: (page = 1, size = 20) =>
     api<import("../types").AdminUserList>(`/api/admin/users?page=${page}&size=${size}`),
@@ -95,6 +117,15 @@ export const adminApi = {
       method: "PATCH",
       body: { role },
     }),
+  applications: (status: string | undefined, page = 1, size = 20) =>
+    api<{ total: number; page: number; size: number; items: import("../types").OrganizerApplication[] }>(
+      `/api/admin/applications?page=${page}&size=${size}${status ? `&status=${status}` : ""}`,
+    ),
+  reviewApplication: (id: number, approve: boolean) =>
+    api<import("../types").OrganizerApplication>(
+      `/api/admin/applications/${id}/review`,
+      { method: "POST", body: { approve } },
+    ),
 };
 
 export const tournamentApi = {

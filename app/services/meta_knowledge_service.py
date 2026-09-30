@@ -15,9 +15,9 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 import yaml
-from loguru import logger
 
 from app.conf.meta_config import ColumnConfig, MetaConfig, MetricConfig, TableConfig
+from app.core.log import logger
 from app.entities.column_info import ColumnInfo
 from app.entities.metric_info import MetricInfo
 from app.entities.table_info import TableInfo

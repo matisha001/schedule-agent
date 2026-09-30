@@ -1,7 +1,7 @@
 /** 官网：自然语言问数助手（不强制登录：游客仅公开数据；预制提示词按登录态+角色展示）。 */
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Loader2, Send, Sparkles } from "lucide-react";
+import { Loader2, Send, Sparkles, CheckCircle2, XCircle, AlertTriangle, Circle } from "lucide-react";
 import { fetchPresets, streamQuery } from "../../lib/agentApi";
 import type { AgentEvent, DoneEvent, PresetQuery } from "../../types";
 import { useAuth } from "../../lib/auth";
@@ -17,48 +17,131 @@ interface Message {
   error?: string;
 }
 
-const STEP_LABELS: Record<string, string> = {
-  抽取关键词: "提取关键词",
-  召回字段信息: "召回字段信息",
-  召回指标信息: "召回指标信息",
-  召回字段取值: "召回字段取值",
-  合并召回信息: "合并召回信息",
-  过滤表信息: "过滤表信息",
-  过滤指标信息: "过滤指标信息",
-  添加额外上下文: "补充上下文",
-  生成SQL: "生成 SQL",
-  校验SQL: "校验 SQL",
-  执行SQL: "执行查询",
-  校正SQL: "修正 SQL",
-};
+type NodeStatus = "pending" | "running" | "success" | "error" | "warning";
 
-// 当前可查询范围的说明（docs/permission-design.md 第 3 节）
-const SCOPE_HINTS: Record<string, string> = {
-  guest: "游客模式：仅可查询已发布的公开赛事信息（赛程/比分/报名统计），无法查询选手与用户明细",
-  player: "玩家模式：可查询已发布赛事公开信息，以及自己的队伍与报名信息",
-  organizer: "办赛者模式：可查询自己创办的赛事全部数据 + 平台已发布赛事公开信息",
-  operator: "运营模式：可查询平台全部数据（敏感字段仅限本人）",
-  super_admin: "超级管理员：可查询平台全部数据",
-};
+interface FanoutNode {
+  step: string;
+  label: string;
+  hint?: string;
+  branch?: "error"; // 仅异常时触发的条件边
+}
+interface PipelineGroup {
+  step: string;
+  label: string;
+  fanout?: FanoutNode[];
+}
 
-let msgSeq = 0;
+// 与 app/agent/graph.py 的 DAG 拓扑一致：
+// 抽取关键词 → 三路并行召回(字段/取值/指标) → 合并 → 两路并行过滤(表/指标)
+//   → 补充上下文 → 生成 SQL → 校验 SQL →(成功)执行 /(语法错)修正后执行 /(权限)直接结束
+const PIPELINE: PipelineGroup[] = [
+  {
+    step: "抽取关键词",
+    label: "提取关键词",
+    fanout: [
+      { step: "召回字段信息", label: "召回字段" },
+      { step: "召回字段取值", label: "召回字段取值" },
+      { step: "召回指标信息", label: "召回指标" },
+    ],
+  },
+  {
+    step: "合并召回信息",
+    label: "合并召回",
+    fanout: [
+      { step: "过滤表信息", label: "过滤候选表" },
+      { step: "过滤指标信息", label: "过滤指标" },
+    ],
+  },
+  { step: "添加额外上下文", label: "补充上下文" },
+  { step: "生成SQL", label: "生成 SQL" },
+  {
+    step: "校验SQL",
+    label: "校验 SQL",
+    fanout: [{ step: "校正SQL", label: "修正 SQL", branch: "error", hint: "语法错时" }],
+  },
+  { step: "执行SQL", label: "执行查询" },
+];
 
-function StepTimeline({ events }: { events: AgentEvent[] }) {
-  const steps = events.filter((e) => e.type === "progress");
+// 逐事件收敛每个节点状态：终态（成功/失败）一旦达成即锁定，不被后续 running 覆盖
+function buildStatusMap(events: AgentEvent[]): Record<string, NodeStatus> {
+  const map: Record<string, NodeStatus> = {};
+  for (const e of events) {
+    if (e.type !== "progress") continue;
+    const prev = map[e.step];
+    if (prev === "success" || prev === "error") continue;
+    map[e.step] = e.status as NodeStatus;
+  }
+  return map;
+}
+
+function StatusIcon({ status }: { status: NodeStatus }) {
+  switch (status) {
+    case "running":
+      return <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-blue-500" />;
+    case "success":
+      return <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-500" />;
+    case "error":
+      return <XCircle className="h-3.5 w-3.5 shrink-0 text-red-500" />;
+    case "warning":
+      return <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-500" />;
+    default:
+      return <Circle className="h-3.5 w-3.5 shrink-0 text-gray-300" />;
+  }
+}
+
+function NodeRow({
+  status,
+  label,
+  hint,
+  muted,
+}: {
+  status: NodeStatus;
+  label: string;
+  hint?: string;
+  muted?: boolean;
+}) {
+  const dim = muted || status === "pending";
+  return (
+    <div className="flex items-center gap-2 font-mono text-xs">
+      <StatusIcon status={status} />
+      <span className={dim ? "text-gray-400" : "text-gray-700"}>{label}</span>
+      {hint && <span className="rounded bg-gray-100 px-1 text-[10px] text-gray-400">{hint}</span>}
+      {status === "running" && <span className="text-blue-400">运行中…</span>}
+    </div>
+  );
+}
+
+/** 问数执行过程：按真实 DAG 渲染成树形，每个节点独立显示 等待/运行中/成功/失败 状态 */
+function NodeGraph({ events }: { events: AgentEvent[] }) {
+  const status = buildStatusMap(events);
   const done = events.find((e) => e.type === "done") as DoneEvent | undefined;
   return (
     <div className="space-y-1.5 text-sm">
-      {steps.map((e, i) => {
-        const label = STEP_LABELS[e.step] ?? e.step;
-        const icon =
-          e.status === "success" ? "✅" : e.status === "error" ? "❌" : e.status === "warning" ? "⚠️" : "🔄";
+      {PIPELINE.map((group, gi) => {
+        const gStatus = status[group.step] ?? "pending";
+        const children = group.fanout ?? [];
         return (
-          <div key={i} className="flex items-center gap-2 font-mono text-xs">
-            <span>{icon}</span>
-            <span className="text-gray-600">{label}</span>
-            {e.status === "running" && <Loader2 className="h-3 w-3 animate-spin" />}
-            {e.status !== "running" && e.message && (
-              <span className="truncate text-gray-400">{e.message}</span>
+          <div key={group.step}>
+            {gi > 0 && <div className="ml-[7px] h-2 w-px bg-gray-200" />}
+            <NodeRow status={gStatus} label={group.label} />
+            {children.length > 0 && (
+              <div className="ml-[7px] border-l border-gray-200 pl-3">
+                {children.map((c) => {
+                  const cStatus = status[c.step] ?? "pending";
+                  const activated = cStatus !== "pending";
+                  return (
+                    <div key={c.step} className="relative mt-1.5">
+                      <span className="absolute -left-3 top-[7px] h-px w-3 bg-gray-200" />
+                      <NodeRow
+                        status={cStatus}
+                        label={c.label}
+                        hint={c.hint}
+                        muted={c.branch === "error" && !activated}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
             )}
           </div>
         );
@@ -72,6 +155,17 @@ function StepTimeline({ events }: { events: AgentEvent[] }) {
     </div>
   );
 }
+
+// 当前可查询范围的说明（docs/permission-design.md 第 3 节）
+const SCOPE_HINTS: Record<string, string> = {
+  guest: "游客模式：仅可查询已发布的公开赛事信息（赛程/比分/报名统计），无法查询选手与用户明细",
+  player: "玩家模式：可查询已发布赛事公开信息，以及自己的队伍与报名信息",
+  organizer: "办赛者模式：可查询自己创办的赛事全部数据 + 平台已发布赛事公开信息",
+  operator: "运营模式：可查询平台全部数据（敏感字段仅限本人）",
+  super_admin: "超级管理员：可查询平台全部数据",
+};
+
+let msgSeq = 0;
 
 function ResultTable({ done }: { done: DoneEvent }) {
   const columns = done.result?.columns ?? [];
@@ -250,7 +344,7 @@ export default function AskPage() {
                 )}
                 {m.events.length > 0 && (
                   <>
-                    <StepTimeline events={m.events} />
+                    <NodeGraph events={m.events} />
                     {doneEvent(m) && <ResultTable done={doneEvent(m)!} />}
                   </>
                 )}

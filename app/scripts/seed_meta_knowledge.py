@@ -10,13 +10,12 @@ import argparse
 import asyncio
 from pathlib import Path
 
-from loguru import logger
-
 from app.clients.mysql_client_manager import (
     dw_mysql_client_manager,
     meta_mysql_client_manager,
 )
 from app.conf.meta_config import load_meta_config
+from app.core.log import logger
 from app.repositories.es.value_es_repository import value_es_repository
 from app.repositories.mysql.dw.dw_mysql_repository import dw_mysql_repository
 from app.repositories.mysql.meta.meta_mysql_repository import meta_mysql_repository

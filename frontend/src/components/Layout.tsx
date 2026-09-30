@@ -1,7 +1,7 @@
 /** 页面布局：官网（玩家视角）与管理后台（办赛者视角），两个独立入口。 */
 
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, LogOut, MessageSquareText, Shield, Trophy, Users } from "lucide-react";
+import { ClipboardList, LayoutDashboard, LogOut, MessageSquareText, Settings, Shield, Trophy, Users } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABELS } from "../types";
 
@@ -26,7 +26,7 @@ function HeaderRight() {
         </Link>
       )}
       {user ? (
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <span className="text-sm text-gray-600">
             {user.nickname}
             {user.role && user.role !== "player" && (
@@ -35,6 +35,13 @@ function HeaderRight() {
               </span>
             )}
           </span>
+          <Link
+            to="/account"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-sm text-gray-500 hover:bg-gray-100"
+            title="账号设置"
+          >
+            <Settings className="h-4 w-4" />
+          </Link>
           <button
             onClick={() => {
               logout();
@@ -96,6 +103,7 @@ export function PortalLayout() {
 export function AdminLayout() {
   const { user } = useAuth();
   const isSuperAdmin = user?.role === "super_admin";
+  const canReview = user && ["operator", "super_admin"].includes(user.role ?? "");
   const roleLabel = ROLE_LABELS[user?.role ?? ""] ?? "办赛者";
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
@@ -113,6 +121,13 @@ export function AdminLayout() {
               <NavLink to="/admin" end className={navCls}>
                 我的赛事
               </NavLink>
+              {canReview && (
+                <NavLink to="/admin/applications" className={navCls}>
+                  <span className="inline-flex items-center gap-1">
+                    <ClipboardList className="h-3.5 w-3.5" /> 申请审批
+                  </span>
+                </NavLink>
+              )}
               {isSuperAdmin && (
                 <NavLink to="/admin/users" className={navCls}>
                   <span className="inline-flex items-center gap-1">

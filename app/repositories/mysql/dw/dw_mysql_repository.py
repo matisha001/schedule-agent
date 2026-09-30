@@ -284,6 +284,7 @@ class DWMySQLRepository:
             model.deleted_at = _func.now()
             model.nickname = f"已注销用户{model.id}"
             await session.commit()
+            await session.refresh(model)
             return AppUserMapper.to_entity(model)
 
     # ---------- 办赛申请（玩家 → 办赛者） ----------
@@ -352,6 +353,7 @@ class DWMySQLRepository:
             model.reviewed_by = reviewer_id
             model.reviewed_at = _func.now()
             await session.commit()
+            await session.refresh(model)
             return OrganizerApplicationMapper.to_entity(model)
 
     # ================= 赛事（写） =================

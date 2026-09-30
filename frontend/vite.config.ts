@@ -8,8 +8,8 @@ export default defineConfig({
   server: {
     host: "127.0.0.1",
     proxy: {
-      // 开发环境代理到后端 FastAPI（本机 localhost 解析异常，固定用 127.0.0.1:8010）
-      '/api': 'http://127.0.0.1:8010',
+      // 开发环境代理到后端 FastAPI（README：uvicorn main:app --reload 默认 8000；固定用 127.0.0.1 避免 localhost 解析异常）
+      '/api': 'http://127.0.0.1:8000',
     },
   },
 })

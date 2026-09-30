@@ -114,8 +114,8 @@ def check_permission(sql: str, context: dict) -> str | None:
                 return "办赛者查询明细数据需要登录"
             if "tournament" not in tables:
                 return (
-                    "办赛者查询队伍/选手/对局/用户明细必须 JOIN 赛事表，"
-                    "并添加条件 tournament.created_by = 当前用户"
+                    f"办赛者查询队伍/选手/对局/用户明细必须 JOIN 赛事表，"
+                    f"并添加条件 tournament.created_by = {user_id}"
                 )
             if not re.search(
                 rf"(?:tournament\.)?created_by\s*=\s*{user_id}\b",
@@ -136,8 +136,8 @@ def check_permission(sql: str, context: dict) -> str | None:
                 pass
             elif not _has_status_ge_1(sql):
                 return (
-                    "办赛者查询赛事需限定已发布（tournament.status >= 1）"
-                    "或自己创办（tournament.created_by = 当前用户）"
+                    f"办赛者查询赛事需限定已发布（tournament.status >= 1）"
+                    f"或自己创办（tournament.created_by = {user_id}）"
                 )
 
     return None

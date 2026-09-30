@@ -81,6 +81,14 @@ async def correct_sql(
             }
         )
 
+        # 兜底：与 generate_sql 保持一致，占位符确定性替换为真实用户 id
+        user_id = runtime.context.get("user_id")
+        if user_id is not None:
+            result = (
+                result.replace("{当前用户id}", str(user_id))
+                .replace("{当前用户}", str(user_id))
+                .replace("{current_user_id}", str(user_id))
+            )
         logger.info(f"校正后的SQL：{result}")
         writer({"type": "progress", "step": step, "status": "success"})
         return {"sql": result}

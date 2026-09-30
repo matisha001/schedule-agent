@@ -62,6 +62,18 @@ async def recall_column(
                 if column_info.id not in column_info_map:
                     column_info_map[column_info.id] = column_info
 
+        # 权限防线①（docs/permission-design.md 第 5 节）：召回结果按角色可见表裁剪
+        # - deny_tables（guest 的 player/app_user）：完全剔除，LLM 根本看不到
+        # - allowed_tables：只保留角色可见表（敏感列保留，由 validate_sql 兜底"仅本人"）
+        deny: set[str] = runtime.context.get("deny_tables") or set()
+        allowed: set[str] = runtime.context.get("allowed_tables") or set()
+        if deny or allowed:
+            column_info_map = {
+                cid: col
+                for cid, col in column_info_map.items()
+                if col.table_id not in deny and (not allowed or col.table_id in allowed)
+            }
+
         # 写回 state 的是去重后的 ColumnInfo 列表，不暴露 Qdrant 原始 point 结构
         retrieved_column_infos: list[ColumnInfo] = list(column_info_map.values())
 

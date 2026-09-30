@@ -79,6 +79,8 @@ class TournamentService:
             raise HTTPException(status_code=400, detail="密码长度需为 6-64 位")
 
         user = await repo.find_user_by_phone(phone)
+        if user is not None and user.deleted_at:
+            raise HTTPException(status_code=401, detail="账号已注销，无法登录")
         if user is None:
             nickname = f"玩家{phone[-4:]}"
             user = await repo.create_user(nickname=nickname, phone=phone, password_hash=hash_password(password))
@@ -90,7 +92,16 @@ class TournamentService:
             raise HTTPException(status_code=401, detail="手机号或密码错误")
 
         token = create_token(user.id)
-        return {"token": token, "user": {"id": user.id, "nickname": user.nickname, "phone": user.phone, "created_at": user.created_at}}
+        return {
+            "token": token,
+            "user": {
+                "id": user.id,
+                "nickname": user.nickname,
+                "phone": user.phone,
+                "role": user.role,
+                "created_at": user.created_at,
+            },
+        }
 
     # ---------- 赛事 ----------
     async def list_tournaments(self, scope: str, user_id: int | None = None) -> list[dict[str, Any]]:
@@ -134,7 +145,6 @@ class TournamentService:
             user_id is not None
             and t.created_by != user_id
             and t.status == 2
-            and t.regist_method == 2
             and my_team is None
             and (confirmed_count + pending_count) < t.max_teams
         )
@@ -235,8 +245,6 @@ class TournamentService:
         t = await self._get_tournament_or_404(tournament_id)
         if t.status != 2:
             raise HTTPException(status_code=400, detail="当前不在报名时间内")
-        if t.regist_method != 2:
-            raise HTTPException(status_code=400, detail="该赛事由办赛者代报名，无法自主报名")
         if t.created_by == user_id:
             raise HTTPException(status_code=400, detail="办赛者不能给自己创建的赛事报名")
 

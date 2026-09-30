@@ -83,6 +83,47 @@ async def merge_retrieved_info(
             if value not in retrieved_column_infos_map[column_id].examples:
                 retrieved_column_infos_map[column_id].examples.append(value)
 
+        # 3.4 权限防线①（docs/permission-design.md 第 5 节）：兜底补列同样按角色可见表裁剪
+        # （指标依赖字段 / 取值兜底 get_column_info_by_id 可能引入不可见表，这里统一拦截，
+        #  同时保证后续 DB 取值兜底只发生在可见字段上）
+        deny: set[str] = runtime.context.get("deny_tables") or set()
+        allowed: set[str] = runtime.context.get("allowed_tables") or set()
+        if deny or allowed:
+            retrieved_column_infos_map = {
+                cid: col
+                for cid, col in retrieved_column_infos_map.items()
+                if col.table_id not in deny and (not allowed or col.table_id in allowed)
+            }
+
+        # 3.5 DB 兜底：离线索引（ES/Qdrant）未收录的新值直接查 DW。
+        # 新增赛事/队伍/选手后无需重跑 seed/build，这里用问题关键词对
+        # 维度文本字段做 LIKE 检索，把真实值补进 examples。
+        dw_mysql_repository = runtime.context["dw_mysql_repository"]
+        value_keywords = [k for k in state["keywords"] if k] or [state["query"]]
+        for column_info in retrieved_column_infos_map.values():
+            if column_info.role != "dimension":
+                continue
+            col_type = (column_info.type or "").lower()
+            if "char" not in col_type and "text" not in col_type:
+                continue
+            for keyword in value_keywords:
+                if not keyword or len(keyword) < 2:
+                    continue
+                try:
+                    db_values = await dw_mysql_repository.search_column_values(
+                        column_info.table_id, column_info.name, keyword, limit=3
+                    )
+                except Exception as exc:  # 兜底失败不影响主流程
+                    logger.warning(f"DB 兜底查询失败 {column_info.table_id}.{column_info.name}: {exc}")
+                    continue
+                for value in db_values:
+                    if value not in column_info.examples:
+                        column_info.examples.append(value)
+                    if len(column_info.examples) >= 20:  # 防止上下文膨胀
+                        break
+                if len(column_info.examples) >= 20:
+                    break
+
         # 4. 按表组织字段上下文
         # SQL 生成提示词通常按“表 -> 字段列表”的方式描述结构，
         # 所以这里先把分散的字段按 table_id 归到各自所属表下面。

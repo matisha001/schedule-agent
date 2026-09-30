@@ -34,3 +34,19 @@ class TournamentAgentContext(TypedDict):
     meta_mysql_repository: MetaMySQLRepository
     # 数仓仓储，负责在额外上下文补全时读取数据库方言 版本等执行环境信息
     dw_mysql_repository: DWMySQLRepository
+
+    # ---- 问数权限上下文（docs/permission-design.md 第 4/5 节） ----
+    # 角色：guest / player / organizer / operator / super_admin
+    role: str
+    # 当前登录用户 id（未登录为 None）
+    user_id: int | None
+    # 角色可见表集合（召回裁剪用；空集表示不裁剪）
+    allowed_tables: set[str]
+    # 完全不可见表集合（guest 的 player/app_user）
+    deny_tables: set[str]
+    # 敏感列（"表.列"）：非超管引用时必须限定本人
+    sensitive_columns: set[str]
+    # 禁止列（"表.列"）：任何 SQL 中出现即拒绝
+    forbid_columns: set[str]
+    # 行级范围：published / own_plus_published / all
+    row_scope: str

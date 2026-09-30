@@ -41,3 +41,35 @@ llm:
 auth:
   token_secret: ${oc.env:TOKEN_SECRET,dev-token-secret-change-me}
   token_ttl: 604800
+
+# 问数助手权限矩阵（docs/permission-design.md 第 3/4/8 节）
+# role 取值：guest(未登录) / player / organizer / operator / super_admin
+query_permissions:
+  domains:
+    D1: { tables: [tournament] }
+    D2: { tables: [team] }
+    D3: { tables: [player] }
+    D4: { tables: [schedule] }
+    D5: { tables: [app_user] }
+  roles:
+    guest:
+      domains: [D1, D2, D4, M]
+      row_scope: published
+      deny_tables: [player, app_user]
+    player:
+      # D5 含 app_user 表：登录用户可查，但 phone/guid 敏感列仅本人（validate_sql 校验）
+      domains: [D1, D2, D3, D4, D5, M]
+      row_scope: published
+    organizer:
+      domains: [D1, D2, D3, D4, D5, M]
+      row_scope: own_plus_published
+    operator:
+      domains: [D1, D2, D3, D4, D5, M]
+      row_scope: all
+    super_admin:
+      domains: [D1, D2, D3, D4, D5, M]
+      row_scope: all
+  # 敏感列：非超管引用这些列时必须限定为本人（app_user.id = 当前用户）
+  sensitive_columns: ["app_user.phone", "app_user.guid"]
+  # 禁止列：任何 SQL 中出现即拒绝（包括超管，防御性兜底）
+  forbid_columns: ["app_user.password_hash"]

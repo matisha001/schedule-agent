@@ -1,8 +1,9 @@
 /** 页面布局：官网（玩家视角）与管理后台（办赛者视角），两个独立入口。 */
 
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { LayoutDashboard, LogOut, MessageSquareText, Trophy, Users } from "lucide-react";
+import { LayoutDashboard, LogOut, MessageSquareText, Shield, Trophy, Users } from "lucide-react";
 import { useAuth } from "../lib/auth";
+import { ROLE_LABELS } from "../types";
 
 function navCls({ isActive }: { isActive: boolean }) {
   return `rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
@@ -13,17 +14,27 @@ function navCls({ isActive }: { isActive: boolean }) {
 function HeaderRight() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const canAdmin = user && ["organizer", "operator", "super_admin"].includes(user.role ?? "");
   return (
     <div className="flex items-center gap-2">
-      <Link
-        to="/admin"
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
-      >
-        <LayoutDashboard className="h-4 w-4" /> 管理后台
-      </Link>
+      {canAdmin && (
+        <Link
+          to="/admin"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50"
+        >
+          <LayoutDashboard className="h-4 w-4" /> 管理后台
+        </Link>
+      )}
       {user ? (
         <div className="flex items-center gap-2">
-          <span className="text-sm text-gray-600">{user.nickname}</span>
+          <span className="text-sm text-gray-600">
+            {user.nickname}
+            {user.role && user.role !== "player" && (
+              <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                {ROLE_LABELS[user.role] ?? user.role}
+              </span>
+            )}
+          </span>
           <button
             onClick={() => {
               logout();
@@ -81,20 +92,36 @@ export function PortalLayout() {
   );
 }
 
-/** 管理后台布局（办赛者视角） */
+/** 管理后台布局（办赛者 / 运营 / 超管视角） */
 export function AdminLayout() {
   const { user } = useAuth();
+  const isSuperAdmin = user?.role === "super_admin";
+  const roleLabel = ROLE_LABELS[user?.role ?? ""] ?? "办赛者";
   return (
     <div className="flex min-h-screen flex-col bg-gray-100">
       <header className="sticky top-0 z-40 border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-14 max-w-6xl items-center justify-between px-4">
-          <Link to="/admin" className="flex items-center gap-2">
-            <LayoutDashboard className="h-5 w-5 text-blue-600" />
-            <span className="text-base font-semibold">赛事管理后台</span>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
-              办赛者
-            </span>
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link to="/admin" className="flex items-center gap-2">
+              <LayoutDashboard className="h-5 w-5 text-blue-600" />
+              <span className="text-base font-semibold">赛事管理后台</span>
+              <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-600">
+                {roleLabel}
+              </span>
+            </Link>
+            <nav className="flex items-center gap-1">
+              <NavLink to="/admin" end className={navCls}>
+                我的赛事
+              </NavLink>
+              {isSuperAdmin && (
+                <NavLink to="/admin/users" className={navCls}>
+                  <span className="inline-flex items-center gap-1">
+                    <Shield className="h-3.5 w-3.5" /> 用户管理
+                  </span>
+                </NavLink>
+              )}
+            </nav>
+          </div>
           <div className="flex items-center gap-3">
             <Link
               to="/"

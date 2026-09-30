@@ -1,13 +1,16 @@
 """入口脚本：生成/读取 conf/meta_config.yaml，并按其灌入 meta 元数据。
 
 用法（脚本层只做参数解析、初始化、调度，业务编排在 MetaKnowledgeService）：
-  uv run python -m app.scripts.seed_meta_knowledge --init     # 生成默认配置（不写库）
-  uv run python -m app.scripts.seed_meta_knowledge            # 按配置灌入 meta（配置缺失时自动先生成）
+  uv run python -m app.scripts.seed_meta_knowledge   # 配置缺失时自动生成 conf/meta_config.yaml，再按配置灌入 meta
+
+灌库为整表替换（幂等），重复执行安全。
 """
 
 import argparse
 import asyncio
 from pathlib import Path
+
+from loguru import logger
 
 from app.clients.mysql_client_manager import (
     dw_mysql_client_manager,
@@ -37,9 +40,8 @@ def _create_service() -> MetaKnowledgeService:
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="灌入 meta 元数据种子")
+    parser = argparse.ArgumentParser(description="生成/读取 meta_config.yaml 并灌入 meta 元数据")
     parser.add_argument("-c", "--conf", default=str(DEFAULT_CONF), help="meta_config.yaml 路径")
-    parser.add_argument("--init", action="store_true", help="只生成默认配置，不写库")
     args = parser.parse_args()
 
     # seed 只需要 Meta MySQL（写元数据）和 DW MySQL（读真实表结构/取值）
@@ -49,12 +51,11 @@ async def main() -> None:
     service = _create_service()
     conf_path = Path(args.conf)
 
-    if args.init:
+    if not conf_path.exists():
+        # 配置缺失：先基于 DW 表结构生成默认配置，再按配置灌库
+        logger.info("conf/meta_config.yaml 不存在，先基于 DW 表结构生成默认配置")
         await service.generate_config(str(conf_path))
-    else:
-        if not conf_path.exists():
-            await service.generate_config(str(conf_path))
-        await service.seed_meta(load_meta_config(str(conf_path)))
+    await service.seed_meta(load_meta_config(str(conf_path)))
 
     await meta_mysql_client_manager.close()
     await dw_mysql_client_manager.close()

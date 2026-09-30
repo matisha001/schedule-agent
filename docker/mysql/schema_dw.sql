@@ -9,15 +9,35 @@
 USE schedule_dw;
 
 -- 1. 用户（id=1 为系统虚拟用户，TEMP 选手占位）
+-- role：player 玩家（默认）/ organizer 办赛者 / operator 运营 / super_admin 系统超管
+-- deleted_at：软注销标记（非空=账号已注销，登录/鉴权拦截；历史赛事与报名数据保留）
 CREATE TABLE IF NOT EXISTS app_user (
     id         INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
     guid       BIGINT       DEFAULT NULL COMMENT '平台 GUID',
     nickname   VARCHAR(64)  NOT NULL COMMENT '昵称',
     phone      VARCHAR(32)  DEFAULT NULL COMMENT '手机号',
     password_hash VARCHAR(255) DEFAULT NULL COMMENT '密码哈希(PBKDF2)',
+    role       VARCHAR(16)  NOT NULL DEFAULT 'player' COMMENT '角色: player/organizer/operator/super_admin',
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    deleted_at DATETIME     DEFAULT NULL COMMENT '注销时间(非空=已注销)',
     PRIMARY KEY (id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户基础信息';
+
+-- 1.1 办赛申请（玩家 → 办赛者，超管/运营审批）
+CREATE TABLE IF NOT EXISTS organizer_application (
+    id          INT          NOT NULL AUTO_INCREMENT COMMENT '自增主键',
+    user_id     INT          NOT NULL COMMENT '申请人',
+    status      VARCHAR(16)  NOT NULL DEFAULT 'PENDING' COMMENT 'PENDING/APPROVED/REJECTED',
+    reason      VARCHAR(255) DEFAULT NULL COMMENT '申请说明',
+    reviewed_by INT          DEFAULT NULL COMMENT '审批人(超管/运营)',
+    reviewed_at DATETIME     DEFAULT NULL COMMENT '审批时间',
+    created_at  DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+    PRIMARY KEY (id),
+    KEY idx_appl_user (user_id),
+    KEY idx_appl_status (status),
+    CONSTRAINT fk_appl_user FOREIGN KEY (user_id) REFERENCES app_user (id),
+    CONSTRAINT fk_appl_reviewer FOREIGN KEY (reviewed_by) REFERENCES app_user (id)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '办赛申请';
 
 -- 2. 赛事（列表 + 基础配置 + 报名规则）
 CREATE TABLE IF NOT EXISTS tournament (

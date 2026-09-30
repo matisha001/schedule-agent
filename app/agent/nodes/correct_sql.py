@@ -34,6 +34,14 @@ async def correct_sql(
         db_info = state["db_info"]
         query = state["query"]
 
+        # 权限约束（docs/permission-design.md 第 5 节防线②）：与生成节点保持一致
+        from app.core.permissions import permission_prompt_section
+
+        permission_rules = permission_prompt_section(
+            runtime.context.get("role", "guest"),
+            runtime.context.get("user_id"),
+        )
+
         # sql 是待修正的候选 SQL，error 是数据库 explain 返回的具体错误信息
         sql = state["sql"]
         error = state["error"]
@@ -45,6 +53,7 @@ async def correct_sql(
                 "metric_infos",
                 "date_info",
                 "db_info",
+                "permission_rules",
                 "query",
                 "sql",
                 "error",
@@ -65,6 +74,7 @@ async def correct_sql(
                 ),
                 "date_info": yaml.dump(date_info, allow_unicode=True, sort_keys=False),
                 "db_info": yaml.dump(db_info, allow_unicode=True, sort_keys=False),
+                "permission_rules": permission_rules,
                 "query": query,
                 "sql": sql,
                 "error": error,

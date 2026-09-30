@@ -3,6 +3,8 @@
 from fastapi import FastAPI
 
 from app.api.lifespan import lifespan
+from app.api.routers.admin_router import admin_router
+from app.api.routers.application_router import application_router
 from app.api.routers.auth_router import auth_router
 from app.api.routers.query_router import query_router
 from app.api.routers.registration_router import registration_router
@@ -15,6 +17,8 @@ app.include_router(auth_router)
 app.include_router(tournament_router)
 app.include_router(registration_router)
 app.include_router(schedule_router)
+app.include_router(admin_router)
+app.include_router(application_router)
 
 
 @app.get("/health")

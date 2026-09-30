@@ -25,8 +25,11 @@ class QdrantClientManager:
         self.config = config
 
     def init(self):
+        # check_compatibility=False：本地 Qdrant server 1.16 与 client 1.19 minor 差 3，
+        # 协议兼容，仅关闭版本检查告警
         self.client = AsyncQdrantClient(
-            url=f"http://{_resolve_host(self.config.host)}:{self.config.port}"
+            url=f"http://{_resolve_host(self.config.host)}:{self.config.port}",
+            check_compatibility=False,
         )
 
     async def close(self):

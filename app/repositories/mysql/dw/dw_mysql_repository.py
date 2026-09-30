@@ -9,18 +9,23 @@ from sqlalchemy import delete, func, select, text
 
 from app.clients.mysql_client_manager import dw_mysql_client_manager
 from app.entities.app_user_info import AppUserInfo
+from app.entities.organizer_application_info import OrganizerApplicationInfo
 from app.entities.player_info import PlayerInfo
 from app.entities.schedule_info import ScheduleInfo
 from app.entities.team_info import TeamInfo
 from app.entities.tournament_info import TournamentInfo
 from app.entities.tournament_phase_info import TournamentPhaseInfo
 from app.models.app_user_info import AppUserInfoMySQL
+from app.models.organizer_application_info import OrganizerApplicationMySQL
 from app.models.player_info import PlayerInfoMySQL
 from app.models.schedule_info import ScheduleInfoMySQL
 from app.models.team_info import TeamInfoMySQL
 from app.models.tournament_info import TournamentInfoMySQL
 from app.models.tournament_phase_info import TournamentPhaseInfoMySQL
 from app.repositories.mysql.dw.mappers.app_user_mapper import AppUserMapper
+from app.repositories.mysql.dw.mappers.organizer_application_mapper import (
+    OrganizerApplicationMapper,
+)
 from app.repositories.mysql.dw.mappers.player_mapper import PlayerMapper
 from app.repositories.mysql.dw.mappers.schedule_mapper import ScheduleMapper
 from app.repositories.mysql.dw.mappers.team_mapper import TeamMapper
@@ -95,6 +100,22 @@ class DWMySQLRepository:
             }
             for r in rows
         ]
+
+    async def search_column_values(self, table: str, column: str, keyword: str, limit: int = 5) -> list[str]:
+        """按关键词 LIKE 搜索字段真实取值（离线索引未收录新值时的 DB 兜底）。
+
+        keyword 来自用户问题/LLM 扩展，做参数化 + LIKE 通配符转义防注入；
+        表名/列名来自 meta 配置（受控输入），仍以反引号包裹。
+        """
+        escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        # 表名/列名来自 meta 配置（受控），LIKE 值用参数化防注入，LIMIT 用 int 强转
+        sql = (
+            f"SELECT DISTINCT `{column}` FROM `{table}` "
+            f"WHERE `{column}` LIKE :kw AND `{column}` IS NOT NULL LIMIT {int(limit)}"
+        )
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(text(sql), {"kw": f"%{escaped}%"})
+            return [str(r[0]) for r in result.fetchall()]
 
     async def get_column_values(self, table: str, column: str, limit: int = 8) -> list[str]:
         """抽样取字段真实取值（去重，最多 limit 个），供元数据入库和检索链路复用。"""
@@ -202,6 +223,136 @@ class DWMySQLRepository:
                 raise ValueError(f"用户不存在: {user_id}")
             model.password_hash = password_hash
             await session.commit()
+
+    # ---------- 用户管理（角色体系） ----------
+    async def list_users(self, limit: int, offset: int) -> list[AppUserInfo]:
+        """分页用户列表（按 id 倒序）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(
+                select(AppUserInfoMySQL)
+                .order_by(AppUserInfoMySQL.id.desc())
+                .limit(limit)
+                .offset(offset)
+            )
+            return [AppUserMapper.to_entity(row) for row in result.scalars().all()]
+
+    async def count_users(self) -> int:
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(
+                select(func.count()).select_from(AppUserInfoMySQL)
+            )
+            return int(result.scalar_one())
+
+    async def count_users_by_role(self, role: str) -> int:
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(
+                select(func.count())
+                .select_from(AppUserInfoMySQL)
+                .where(AppUserInfoMySQL.role == role)
+            )
+            return int(result.scalar_one())
+
+    async def update_user_role(self, user_id: int, role: str) -> AppUserInfo | None:
+        """更新用户角色，返回更新后的用户（不存在返回 None）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            model = await session.get(AppUserInfoMySQL, user_id)
+            if model is None:
+                return None
+            model.role = role
+            await session.commit()
+            return AppUserMapper.to_entity(model)
+
+    # ---------- 账号资料与软注销 ----------
+    async def update_user_nickname(self, user_id: int, nickname: str) -> AppUserInfo | None:
+        """更新昵称，返回更新后的用户（不存在返回 None）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            model = await session.get(AppUserInfoMySQL, user_id)
+            if model is None:
+                return None
+            model.nickname = nickname
+            await session.commit()
+            return AppUserMapper.to_entity(model)
+
+    async def soft_delete_user(self, user_id: int) -> AppUserInfo | None:
+        """软注销：置 deleted_at 并匿名化昵称（历史赛事/报名数据保留）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            model = await session.get(AppUserInfoMySQL, user_id)
+            if model is None:
+                return None
+            from sqlalchemy import func as _func
+
+            model.deleted_at = _func.now()
+            model.nickname = f"已注销用户{model.id}"
+            await session.commit()
+            return AppUserMapper.to_entity(model)
+
+    # ---------- 办赛申请（玩家 → 办赛者） ----------
+    async def create_organizer_application(
+        self, user_id: int, reason: str | None = None
+    ) -> OrganizerApplicationInfo:
+        async with dw_mysql_client_manager.session_factory() as session:
+            model = OrganizerApplicationMySQL(user_id=user_id, reason=reason)
+            session.add(model)
+            await session.commit()
+            await session.refresh(model)
+            return OrganizerApplicationMapper.to_entity(model)
+
+    async def get_organizer_application(self, app_id: int) -> OrganizerApplicationInfo | None:
+        async with dw_mysql_client_manager.session_factory() as session:
+            row = await session.get(OrganizerApplicationMySQL, app_id)
+            return OrganizerApplicationMapper.to_entity(row) if row else None
+
+    async def find_latest_application_by_user(self, user_id: int) -> OrganizerApplicationInfo | None:
+        """用户最新一条办赛申请（用于展示状态 / 防重复提交）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            result = await session.execute(
+                select(OrganizerApplicationMySQL)
+                .where(OrganizerApplicationMySQL.user_id == user_id)
+                .order_by(OrganizerApplicationMySQL.id.desc())
+                .limit(1)
+            )
+            row = result.scalars().first()
+            return OrganizerApplicationMapper.to_entity(row) if row else None
+
+    async def list_organizer_applications(
+        self, status: str | None = None, limit: int = 20, offset: int = 0
+    ) -> list[OrganizerApplicationInfo]:
+        """审批列表：按申请时间倒序，可按状态筛选。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            query = select(OrganizerApplicationMySQL).order_by(
+                OrganizerApplicationMySQL.id.desc()
+            )
+            if status:
+                query = query.where(OrganizerApplicationMySQL.status == status)
+            result = await session.execute(query.limit(limit).offset(offset))
+            return [
+                OrganizerApplicationMapper.to_entity(row)
+                for row in result.scalars().all()
+            ]
+
+    async def count_organizer_applications(self, status: str | None = None) -> int:
+        async with dw_mysql_client_manager.session_factory() as session:
+            query = select(func.count()).select_from(OrganizerApplicationMySQL)
+            if status:
+                query = query.where(OrganizerApplicationMySQL.status == status)
+            result = await session.execute(query)
+            return int(result.scalar_one())
+
+    async def review_organizer_application(
+        self, app_id: int, status: str, reviewer_id: int
+    ) -> OrganizerApplicationInfo | None:
+        """审批申请（APPROVED/REJECTED），记录审批人与时间。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            model = await session.get(OrganizerApplicationMySQL, app_id)
+            if model is None:
+                return None
+            from sqlalchemy import func as _func
+
+            model.status = status
+            model.reviewed_by = reviewer_id
+            model.reviewed_at = _func.now()
+            await session.commit()
+            return OrganizerApplicationMapper.to_entity(model)
 
     # ================= 赛事（写） =================
     async def create_tournament(self, entity: TournamentInfo) -> TournamentInfo:

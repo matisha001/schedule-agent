@@ -27,8 +27,54 @@ export interface User {
   id: number;
   nickname: string;
   phone?: string | null;
+  role?: string; // guest/player/organizer/operator/super_admin（guest=未登录）
   created_at?: string | null;
 }
+
+/* ================= 问数预制提示词 ================= */
+
+export interface PresetQueryParam {
+  key: string;
+  source: string;
+}
+
+export interface PresetQuery {
+  id: string;
+  title: string;
+  template: string;
+  params: PresetQueryParam[];
+}
+
+/* ================= 后台用户管理 ================= */
+
+export interface AdminUser {
+  id: number;
+  nickname: string;
+  phone?: string | null;
+  role: string;
+  created_at?: string | null;
+}
+
+export interface AdminUserList {
+  total: number;
+  page: number;
+  size: number;
+  items: AdminUser[];
+}
+
+export const ROLE_LABELS: Record<string, string> = {
+  player: "玩家",
+  organizer: "办赛者",
+  operator: "运营",
+  super_admin: "超级管理员",
+};
+
+export const ROLE_OPTIONS = [
+  { value: "player", label: "玩家" },
+  { value: "organizer", label: "办赛者" },
+  { value: "operator", label: "运营" },
+  { value: "super_admin", label: "超级管理员" },
+];
 
 export interface Tournament {
   id: number;

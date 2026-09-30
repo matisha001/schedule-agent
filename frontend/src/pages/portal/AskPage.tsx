@@ -1,9 +1,13 @@
-/** 官网：自然语言问数助手（保留原有 SSE 聊天能力）。 */
+/** 官网：自然语言问数助手（不强制登录：游客仅公开数据；预制提示词按登录态+角色展示）。 */
 
-import { useRef, useState, type KeyboardEvent } from "react";
-import { Loader2, Send } from "lucide-react";
-import { streamQuery } from "../../lib/agentApi";
-import type { AgentEvent, DoneEvent } from "../../types";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { Loader2, Send, Sparkles } from "lucide-react";
+import { fetchPresets, streamQuery } from "../../lib/agentApi";
+import type { AgentEvent, DoneEvent, PresetQuery } from "../../types";
+import { useAuth } from "../../lib/auth";
+import { ROLE_LABELS } from "../../types";
+import { api } from "../../lib/api";
+import { Button, Modal } from "../../components/ui";
 
 interface Message {
   id: number;
@@ -26,6 +30,15 @@ const STEP_LABELS: Record<string, string> = {
   校验SQL: "校验 SQL",
   执行SQL: "执行查询",
   校正SQL: "修正 SQL",
+};
+
+// 当前可查询范围的说明（docs/permission-design.md 第 3 节）
+const SCOPE_HINTS: Record<string, string> = {
+  guest: "游客模式：仅可查询已发布的公开赛事信息（赛程/比分/报名统计），无法查询选手与用户明细",
+  player: "玩家模式：可查询已发布赛事公开信息，以及自己的队伍与报名信息",
+  organizer: "办赛者模式：可查询自己创办的赛事全部数据 + 平台已发布赛事公开信息",
+  operator: "运营模式：可查询平台全部数据（敏感字段仅限本人）",
+  super_admin: "超级管理员：可查询平台全部数据",
 };
 
 let msgSeq = 0;
@@ -92,14 +105,49 @@ function ResultTable({ done }: { done: DoneEvent }) {
   );
 }
 
+/** 预制提示词 chips：点击直接提问；带 params 的（办赛者 o2/o3/o4）先弹赛事选择器 */
+function PresetChips({
+  presets,
+  onPick,
+}: {
+  presets: PresetQuery[];
+  onPick: (template: string, presets: PresetQuery[]) => void;
+}) {
+  if (!presets.length) return null;
+  return (
+    <div className="flex flex-wrap justify-center gap-2">
+      {presets.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => onPick(p.template, [p])}
+          className="inline-flex items-center gap-1 rounded-full border border-blue-100 bg-blue-50 px-3 py-1.5 text-sm text-blue-700 transition-colors hover:border-blue-300 hover:bg-blue-100"
+        >
+          <Sparkles className="h-3.5 w-3.5" />
+          {p.title}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function AskPage() {
+  const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [presets, setPresets] = useState<PresetQuery[]>([]);
+  const [presetModal, setPresetModal] = useState<PresetQuery | null>(null);
+  const [tournaments, setTournaments] = useState<{ id: number; name: string }[]>([]);
+  const [tournamentLoading, setTournamentLoading] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  const send = async () => {
-    const query = input.trim();
+  // 预制提示词按登录态 + 角色加载（游客只拿到公开 4 条）
+  useEffect(() => {
+    fetchPresets().then(setPresets).catch(() => setPresets([]));
+  }, [user?.id]);
+
+  const send = async (queryText?: string) => {
+    const query = (queryText ?? input).trim();
     if (!query || loading) return;
     setInput("");
     const id = ++msgSeq;
@@ -139,16 +187,50 @@ export default function AskPage() {
   const doneEvent = (m: Message): DoneEvent | undefined =>
     m.events.find((e) => e.type === "done") as DoneEvent | undefined;
 
+  // 点击预制提示词：无参数直接提问；有参数（需选赛事）弹选择器
+  const onPickPreset = (template: string, picked: PresetQuery[]) => {
+    const p = picked[0];
+    if (p && p.params.length > 0) {
+      setPresetModal(p);
+      if (tournaments.length === 0) {
+        setTournamentLoading(true);
+        api<{ id: number; name: string }[]>("/api/tournaments?scope=published")
+          .then(setTournaments)
+          .catch(() => setTournaments([]))
+          .finally(() => setTournamentLoading(false));
+      }
+      return;
+    }
+    send(template);
+  };
+
+  const submitPreset = () => {
+    if (!presetModal) return;
+    const selected = tournaments[0];
+    if (!selected) return;
+    const query = presetModal.template.replaceAll("{{赛事名}}", selected.name);
+    setPresetModal(null);
+    send(query);
+  };
+
+  const scopeHint = SCOPE_HINTS[user?.role ?? "guest"] ?? SCOPE_HINTS.guest;
+
   return (
     <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col">
       <header className="mb-4 text-center">
         <h1 className="text-2xl font-semibold text-gray-900">赛事问数助手</h1>
-        <p className="mt-1 text-sm text-gray-500">用自然语言查询赛程、比分、积分与统计</p>
+        <p className="mt-1 text-sm text-gray-500">用自然语言查询赛程、比分、报名与统计</p>
+        <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
+          {user ? `已登录 · ${ROLE_LABELS[user.role ?? "player"] ?? "玩家"}` : "游客模式（未登录）"} · {scopeHint}
+        </p>
       </header>
       <main className="flex-1 space-y-4 overflow-y-auto pb-4">
         {messages.length === 0 && (
-          <div className="pt-16 text-center text-sm text-gray-400">
-            试试问：「XX 队最近 5 场比赛的比分」或「本届赛事小组赛积分榜」
+          <div className="space-y-4 pt-8 text-center">
+            <p className="text-sm text-gray-400">
+              试试问：「XX 队最近 5 场比赛的比分」或「本届赛事小组赛积分榜」
+            </p>
+            <PresetChips presets={presets} onPick={onPickPreset} />
           </div>
         )}
         {messages.map((m) =>
@@ -188,7 +270,7 @@ export default function AskPage() {
             className="flex-1 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
           />
           <button
-            onClick={send}
+            onClick={() => send()}
             disabled={loading || !input.trim()}
             className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
             title="发送"
@@ -198,6 +280,46 @@ export default function AskPage() {
         </div>
         <p className="mt-2 text-center text-xs text-gray-400">问数助手基于赛事库自动查询，结果仅供参考</p>
       </footer>
+
+      {/* 带参数的预制提示词：选择赛事后生成问题 */}
+      <Modal
+        open={presetModal !== null}
+        title={presetModal?.title ?? "选择赛事"}
+        onClose={() => setPresetModal(null)}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setPresetModal(null)}>
+              取消
+            </Button>
+            <Button onClick={submitPreset} disabled={tournaments.length === 0 || tournamentLoading}>
+              生成问题
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500">选择要分析的赛事：</p>
+          {tournamentLoading ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-gray-400">
+              <Loader2 className="h-4 w-4 animate-spin" /> 加载赛事列表…
+            </div>
+          ) : tournaments.length === 0 ? (
+            <div className="py-4 text-sm text-gray-400">暂无可选赛事</div>
+          ) : (
+            <div className="max-h-64 space-y-1 overflow-y-auto">
+              {tournaments.map((t) => (
+                <label
+                  key={t.id}
+                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-blue-50"
+                >
+                  <input type="radio" name="preset-tournament" defaultChecked={t.id === tournaments[0].id} />
+                  <span className="text-gray-800">{t.name}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   );
 }

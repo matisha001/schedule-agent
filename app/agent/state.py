@@ -78,4 +78,5 @@ class TournamentAgentState(TypedDict):
     sql: str  # 生成或校正后的SQL
 
     error: str  # 校验SQL时出现的错误信息
+    permission_blocked: bool  # 权限校验失败（一票否决，不进入修正，直接结束）
     result: dict  # SQL 执行结果，供 SSE done 事件展示：{"columns": [...], "rows": [...]}

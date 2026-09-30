@@ -6,13 +6,15 @@
 
 | 模块 | 能力 |
 |---|---|
-| 用户认证 | 手机号 + 密码登录（新用户自动注册）、无状态 Token、PBKDF2 密码哈希 |
+| 用户认证 | 手机号 + 密码登录（新用户自动注册）、无状态 Token、PBKDF2 密码哈希；4 种角色（玩家/办赛者/运营/超管），超管首次启动引导创建 |
+| 权限管理 | 后台用户权限管理（仅超管）：分页用户列表、一键调整角色；最后一名超管不可降级 |
 | 赛事管理 | 赛事 CRUD、基础配置（游戏/地图/人数上限/报名方式/规则）、状态流转（草稿→已发布→报名中→比赛中→已结束） |
 | 阶段管理 | 赛事阶段（名称/起止时间/状态）维护 |
 | 报名管理 | 队伍 + 选手管理；选手自主报名 / 办赛者代报名；队伍审核、队长指派、选手状态（AGREED/PENDING/REJECTED） |
 | 赛程管理 | 对局编排（阶段/轮次/BO/决赛标记）、比分录入、对局状态流转 |
-| 问数 Agent | 自然语言查询赛事数据，LangGraph 12 节点工作流：关键词抽取 → 三路并行召回 → 双路过滤 → SQL 生成/校验/修正/执行，SSE 实时推送执行步骤 |
-| 前端 | 双入口：官网（玩家视角）+ 管理后台（办赛者视角），React 聊天式问数页 |
+| 问数 Agent | 自然语言查询赛事数据，LangGraph 12 节点工作流：关键词抽取 → 三路并行召回 → 双路过滤 → SQL 生成/校验/修正/执行，SSE 实时推送执行步骤；不强制登录，按登录态+角色做权限查询（三层防线） |
+| 预制提示词 | 按登录态+角色服务端过滤，每种角色默认 4 条；办赛者含「选择赛事」参数化提示词 |
+| 前端 | 双入口：官网（玩家视角）+ 管理后台（办赛者/运营/超管视角），React 聊天式问数页 |
 
 ## 技术栈
 
@@ -85,6 +87,8 @@ app_user（用户） ──1:N── tournament（赛事） ──1:N── tour
 - **登录**：`POST /api/auth/login`（手机号 + 密码）。新手机号自动注册（昵称默认 `玩家{尾号4位}`）；历史无密码用户首次登录自动设置密码完成认领；密码错误统一返回"手机号或密码错误"，不泄露账号存在性。
 - **Token**：HMAC-SHA256 签名的无状态 Token（`base64url(payload).base64url(signature)`，payload 为 `{uid, exp}`），默认有效期 7 天，密钥来自 `TOKEN_SECRET`。
 - **密码哈希**：标准库 PBKDF2-HMAC-SHA256（600,000 迭代，随机盐），未引入 bcrypt/passlib（Python 3.14 兼容性考虑）。
+- **角色体系**：`player`（玩家，默认）/ `organizer`（办赛者）/ `operator`（运营）/ `super_admin`（超管）。首次启动系统无超管时，服务日志会打印一次性 6 位初始化码，登录页出现「系统初始化」入口，凭初始化码创建超管（创建后通道关闭）；用户管理页（仅超管）可调整任意用户角色，最后一名超管不可降级。
+- **问数权限（三层防线）**：①召回层按角色裁剪候选表/字段；②SQL 生成/修正 Prompt 注入角色权限规则（可见表、行级范围、敏感列仅本人）；③`validate_sql` 确定性终检：禁看表一票否决、非超管表必须 ⊆ 白名单、敏感列（手机号/guid）必须带 `app_user.id = 当前用户`、已发布约束（`status >= 1`）、办赛者明细必须 `tournament.created_by = 当前用户`。权限错误不走 LLM 修正绕过，直接拒绝返回。
 
 ## API 一览
 
@@ -92,7 +96,11 @@ app_user（用户） ──1:N── tournament（赛事） ──1:N── tour
 |---|---|---|
 | Health | `GET /health` | 健康检查 |
 | Auth | `POST /api/auth/login` | 手机号+密码登录（自动注册） |
-| Auth | `GET /api/auth/me` | 当前用户信息 |
+| Auth | `GET /api/auth/me` | 当前用户信息（含 role） |
+| Auth | `GET /api/auth/bootstrap/status` | 超管引导状态（need_bootstrap + 初始化码） |
+| Auth | `POST /api/auth/bootstrap` | 凭初始化码创建系统超管（返回登录态） |
+| Admin | `GET /api/admin/users` | 用户分页列表（仅超管） |
+| Admin | `PATCH /api/admin/users/{id}/role` | 调整用户角色（仅超管，保护最后一名超管） |
 | Tournament | `GET/POST /api/tournaments` | 赛事列表（`scope=published\|mine`）/ 创建 |
 | Tournament | `GET/PUT/DELETE /api/tournaments/{id}` | 赛事详情 / 更新 / 删除 |
 | Tournament | `POST /api/tournaments/{id}/transition` | 赛事状态流转（publish/open/close/start/finish） |
@@ -106,21 +114,23 @@ app_user（用户） ──1:N── tournament（赛事） ──1:N── tour
 | Registration | `PATCH /api/players/{id}/captain`、`/status`、`DELETE` | 队长指派 / 选手状态 / 删除 |
 | Schedule | `GET/POST /api/tournaments/{id}/schedules` | 对局列表 / 创建 |
 | Schedule | `PATCH/DELETE /api/schedules/{id}` | 对局更新（含比分）/ 删除 |
-| Query | `POST /api/query` | Agent 问数（SSE 事件流） |
+| Query | `POST /api/query` | Agent 问数（SSE 事件流，可选登录） |
+| Query | `GET /api/query/presets` | 预制提示词（按登录态+角色过滤） |
 
 ## 前端页面
 
 ```
-/login                          登录（手机号 + 密码）
+/login                          登录（手机号 + 密码；系统无超管时显示「系统初始化」入口）
 官网（玩家视角）  /
   /                             赛事列表（已发布）
   /tournaments/:id              赛事详情（阶段/队伍/赛程，登录后显示报名入口）
   /register/:id                 报名链接直达（自动打开报名弹窗）
   /my                           我的赛事（需登录）
-  /ask                          Ask 问数页（SSE 流式展示 Agent 执行步骤 + 结果表格）
-管理后台（办赛者视角）  /admin
+  /ask                          Ask 问数页（游客/登录均可；预制提示词按角色展示，SSE 流式展示执行步骤 + 结果表格）
+管理后台（办赛者/运营/超管）  /admin
   /admin                        我的赛事管理列表
   /admin/tournaments/:id        赛事管理详情（基础配置 / 报名管理 / 赛程管理 三个 Tab）
+  /admin/users                  用户权限管理（仅超管：分页列表 + 角色调整）
 ```
 
 ## 目录结构
@@ -206,10 +216,10 @@ cd docker && docker-compose up -d
 
 # 2. 初始化业务库 + 灌入知识库元数据（首次或元数据变更后）
 #    业务表 DDL 由 docker/mysql/schema_dw.sql 自动执行（docker-entrypoint-initdb.d）；
-#    知识库侧先按 DW 结构生成 conf/meta_config.yaml（可手工修改表/字段/指标定义），
-#    再按配置灌入 meta 元数据，最后构建 Qdrant/ES 索引：
-cd .. && uv run python -m app.scripts.seed_meta_knowledge --init   # 生成配置（可选，改完表结构后重跑）
-uv run python -m app.scripts.seed_meta_knowledge                   # 按配置灌 meta（DW → meta）
+#    知识库侧：seed 命令在 conf/meta_config.yaml 缺失时自动基于 DW 表结构生成
+#    （可手工修改表/字段/指标定义后再重跑），并按配置灌入 meta 元数据（整表替换，幂等）；
+#    最后构建 Qdrant/ES 索引（构建前自动清空旧索引，保证与 meta 库一致）：
+cd .. && uv run python -m app.scripts.seed_meta_knowledge          # 生成配置（如缺失）+ 按配置灌 meta（DW → meta）
 uv run python -m app.scripts.build_meta_knowledge                  # 构建 Qdrant/ES 索引
 
 # 3. 启动后端

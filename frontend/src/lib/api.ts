@@ -63,6 +63,11 @@ export async function api<T = unknown>(
   return payload as T;
 }
 
+export interface BootstrapStatus {
+  need_bootstrap: boolean;
+  code?: string;
+}
+
 export const authApi = {
   login: (phone: string, password: string) =>
     api<{ token: string; user: import("../types").User }>("/api/auth/login", {
@@ -71,6 +76,25 @@ export const authApi = {
       auth: false,
     }),
   me: () => api<import("../types").User>("/api/auth/me"),
+  bootstrapStatus: () =>
+    api<BootstrapStatus>("/api/auth/bootstrap/status", { auth: false }),
+  bootstrap: (code: string, phone: string, password: string) =>
+    api<{ token: string; user: import("../types").User }>("/api/auth/bootstrap", {
+      method: "POST",
+      body: { code, phone, password },
+      auth: false,
+    }),
+};
+
+/** 用户权限管理（仅超级管理员） */
+export const adminApi = {
+  users: (page = 1, size = 20) =>
+    api<import("../types").AdminUserList>(`/api/admin/users?page=${page}&size=${size}`),
+  updateRole: (id: number, role: string) =>
+    api<import("../types").AdminUser>(`/api/admin/users/${id}/role`, {
+      method: "PATCH",
+      body: { role },
+    }),
 };
 
 export const tournamentApi = {

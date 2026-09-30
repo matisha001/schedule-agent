@@ -313,6 +313,8 @@ tables:
     description: 更新时间
     alias: []
     sync: false
+
+    
 metrics:
 - name: 报名队伍数
   agg_type: count

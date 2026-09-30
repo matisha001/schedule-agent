@@ -15,7 +15,9 @@ class AppUserMapper:
             guid=model.guid,
             phone=model.phone,
             password_hash=model.password_hash,
+            role=model.role,
             created_at=model.created_at,
+            deleted_at=model.deleted_at,
         )
 
     @staticmethod

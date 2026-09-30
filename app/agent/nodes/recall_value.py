@@ -60,6 +60,18 @@ async def recall_value(
                 if current_value_info.id not in value_infos_map:
                     value_infos_map[current_value_info.id] = current_value_info
 
+        # 权限防线①（docs/permission-design.md 第 5 节）：按字段所属表裁剪取值召回
+        # field_name 为 "表.列"（如 team.name），取前半部分作为表名判断
+        deny: set[str] = runtime.context.get("deny_tables") or set()
+        allowed: set[str] = runtime.context.get("allowed_tables") or set()
+        if deny or allowed:
+            value_infos_map = {
+                vid: v
+                for vid, v in value_infos_map.items()
+                if v.field_name.split(".", 1)[0] not in deny
+                and (not allowed or v.field_name.split(".", 1)[0] in allowed)
+            }
+
         # 写回 state 的是去重后的字段值实体，后续合并节点再决定如何组织上下文
         retrieved_value_infos: list[ValueInfo] = list(value_infos_map.values())
         logger.info(f"检索到字段取值：{list(value_infos_map.keys())}")

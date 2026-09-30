@@ -34,6 +34,14 @@ async def generate_sql(
         db_info = state["db_info"]
         query = state["query"]
 
+        # 权限约束（docs/permission-design.md 第 5 节防线②）：注入角色/可见表/行级规则
+        from app.core.permissions import permission_prompt_section
+
+        permission_rules = permission_prompt_section(
+            runtime.context.get("role", "guest"),
+            runtime.context.get("user_id"),
+        )
+
         prompt = PromptTemplate(
             template=load_prompt("generate_sql"),
             input_variables=[
@@ -41,6 +49,7 @@ async def generate_sql(
                 "metric_infos",
                 "date_info",
                 "db_info",
+                "permission_rules",
                 "query",
             ],
         )
@@ -59,6 +68,7 @@ async def generate_sql(
                 ),
                 "date_info": yaml.dump(date_info, allow_unicode=True, sort_keys=False),
                 "db_info": yaml.dump(db_info, allow_unicode=True, sort_keys=False),
+                "permission_rules": permission_rules,
                 "query": query,
             }
         )

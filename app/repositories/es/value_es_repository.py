@@ -24,6 +24,13 @@ INDEX_MAPPINGS = {
 
 
 class ValueESRepository:
+    async def clear(self) -> None:
+        """删除整个索引（重建前调用，保证索引与 meta 库完全一致）。"""
+        client = es_client_manager.client
+        if client is None:
+            raise RuntimeError("ES client 未初始化，请检查 lifespan")
+        await client.indices.delete(index=VALUE_INDEX, ignore_unavailable=True)
+
     async def ensure_index(self) -> None:
         """确保取值索引存在（首次写入前由构建脚本调用）。"""
         client = es_client_manager.client

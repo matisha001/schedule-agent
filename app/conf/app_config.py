@@ -62,6 +62,9 @@ class AppConfig:
     es: ESConfig
     llm: LLMConfig
     auth: AuthConfig
+    # 问数权限矩阵：{"domains": {...}, "roles": {...}, "sensitive_columns": [...], "forbid_columns": [...]}
+    # 结构见 conf/app_config.yaml 的 query_permissions 段（docs/permission-design.md 第 8 节）
+    query_permissions: dict | None = None
 
 
 # 从当前文件位置回到项目根目录（app/conf/app_config.py -> 项目根）

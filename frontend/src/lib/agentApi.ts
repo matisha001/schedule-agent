@@ -1,6 +1,8 @@
-/** SSE 流式问数请求（参照 k.md 四：fetch ReadableStream 手动解析） */
+/** SSE 流式问数请求（参照 k.md 四：fetch ReadableStream 手动解析）
+ * 问数不强制登录：未登录游客仅可查公开数据；登录用户按角色注入权限。
+ */
 
-import type { AgentEvent } from "../types";
+import type { AgentEvent, PresetQuery } from "../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
@@ -9,9 +11,16 @@ export async function streamQuery(
   onEvent: (event: AgentEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "text/event-stream",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
   const response = await fetch(`${API_BASE_URL}/api/query`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    headers,
     body: JSON.stringify({ query }),
     signal,
   });
@@ -46,4 +55,14 @@ export async function streamQuery(
       }
     }
   }
+}
+
+/** 预制提示词：服务端按「登录态 + 角色」过滤（未登录只返回公开 4 条） */
+export async function fetchPresets(): Promise<PresetQuery[]> {
+  const token = localStorage.getItem("token");
+  const headers: Record<string, string> = { Accept: "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${API_BASE_URL}/api/query/presets`, { headers });
+  if (!response.ok) return [];
+  return response.json() as Promise<PresetQuery[]>;
 }

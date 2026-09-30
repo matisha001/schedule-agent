@@ -1,9 +1,16 @@
 /** 官网：赛事详情。报名入口在详情页与报名链接（列表不提供报名）。 */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
-import { Calendar, Link2, ScrollText, ShieldAlert, Users } from "lucide-react";
-import type { TournamentDetail } from "../../types";
+import {
+  Calendar,
+  CalendarClock,
+  Link2,
+  ScrollText,
+  ShieldAlert,
+  Users,
+} from "lucide-react";
+import type { Schedule, TournamentDetail } from "../../types";
 import { tournamentApi } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import {
@@ -23,6 +30,7 @@ export default function TournamentDetailPage() {
   const location = useLocation();
 
   const [detail, setDetail] = useState<TournamentDetail | null>(null);
+  const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [registerOpen, setRegisterOpen] = useState(false);
@@ -43,10 +51,10 @@ export default function TournamentDetailPage() {
   const load = useCallback(() => {
     if (!id) return;
     setLoading(true);
-    tournamentApi
-      .detail(id)
-      .then((d) => {
+    Promise.all([tournamentApi.detail(id), tournamentApi.schedules(Number(id))])
+      .then(([d, s]) => {
         setDetail(d);
+        setSchedules(s);
         setError("");
       })
       .catch((err) => setError(err instanceof Error ? err.message : "加载失败"))
@@ -65,12 +73,30 @@ export default function TournamentDetailPage() {
     setRegisterOpen(true);
   };
 
+  // 对局按阶段分组（顺序遵循赛事阶段配置，未分阶段的归入「未分阶段」）
+  const scheduleSections = useMemo(() => {
+    const map = new Map<number, Schedule[]>();
+    for (const s of schedules) {
+      const key = s.phase_id ?? -1;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(s);
+    }
+    const result: { id: number; name: string; list: Schedule[] }[] = [];
+    if (detail) {
+      for (const p of detail.phases) {
+        if (map.has(p.id)) result.push({ id: p.id, name: p.name, list: map.get(p.id)! });
+      }
+    }
+    if (map.has(-1)) result.push({ id: -1, name: "未分阶段", list: map.get(-1)! });
+    return result;
+  }, [schedules, detail]);
+
   if (loading) return <Spinner text="加载赛事详情…" />;
   if (error) return <ErrorBanner message={error} />;
   if (!detail) return <Empty />;
 
   const regOpen =
-    detail.status === 2 && detail.regist_method === 2 && !detail.my_team;
+    detail.status === 2 && !detail.my_team;
 
   return (
     <div className="space-y-5">
@@ -147,13 +173,13 @@ export default function TournamentDetailPage() {
               查看我的比赛
             </Link>
           </div>
-        ) : detail.regist_method === 1 ? (
-          <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
-            <ShieldAlert className="h-4 w-4" /> 本赛事由办赛者代报名，如有意参赛请联系办赛者
-          </div>
         ) : regOpen ? (
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
             <Calendar className="h-4 w-4" /> 报名进行中，创建你的队伍加入赛事
+          </div>
+        ) : detail.regist_method === 1 ? (
+          <div className="mt-4 flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
+            <ShieldAlert className="h-4 w-4" /> 本赛事由办赛者代报名，如有意参赛请联系办赛者
           </div>
         ) : detail.status !== 2 ? (
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-500">
@@ -171,10 +197,6 @@ export default function TournamentDetailPage() {
               <div className="flex gap-3">
                 <dt className="w-20 shrink-0 text-gray-400">可选地图</dt>
                 <dd className="text-gray-700">{detail.game_maps || "-"}</dd>
-              </div>
-              <div className="flex gap-3">
-                <dt className="w-20 shrink-0 text-gray-400">联系方式要求</dt>
-                <dd className="text-gray-700">{detail.contact_requirement || "-"}</dd>
               </div>
               <div className="flex gap-3">
                 <dt className="w-20 shrink-0 text-gray-400">比赛规则</dt>
@@ -237,6 +259,59 @@ export default function TournamentDetailPage() {
           )}
         </section>
       </div>
+
+      {/* 对局赛程 */}
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+        <h2 className="mb-3 flex items-center gap-1.5 text-base font-semibold">
+          <CalendarClock className="h-4 w-4 text-gray-400" /> 对局赛程
+          <span className="text-xs font-normal text-gray-400">{schedules.length} 场</span>
+        </h2>
+        {schedules.length === 0 ? (
+          <Empty text="暂无对局" />
+        ) : (
+          <div className="space-y-4">
+            {scheduleSections.map(({ id, name, list }) => (
+              <div key={id}>
+                <p className="mb-1.5 text-sm font-medium text-gray-500">
+                  {name} <span className="text-xs font-normal text-gray-400">{list.length} 场</span>
+                </p>
+                <ul className="divide-y divide-gray-100 rounded-xl border border-gray-100">
+                  {list.map((s) => (
+                    <li
+                      key={s.id}
+                      className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                    >
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span className="shrink-0 text-sm text-gray-400">
+                          {s.round_name || `第${s.round}轮`}
+                          {s.is_final === 1 && (
+                            <span className="ml-1 text-blue-600">决赛</span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2 text-sm font-medium">
+                          <span className="truncate">{s.home_team_name}</span>
+                          <span className="rounded bg-gray-100 px-2 py-0.5 font-mono text-xs">
+                            {s.status === 2
+                              ? `${s.home_score ?? 0} : ${s.away_score ?? 0}`
+                              : "vs"}
+                          </span>
+                          <span className="truncate">{s.away_team_name}</span>
+                        </div>
+                        <Badge label={s.status_label} status={s.status} kind="schedule" />
+                      </div>
+                      <span className="inline-flex items-center gap-1 text-xs text-gray-400">
+                        <CalendarClock className="h-3.5 w-3.5" />
+                        {formatDateTime(s.start_time)}
+                        <span className="text-gray-300">|</span> BO{s.bo}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       <RegisterTeamModal
         detail={detail}

@@ -23,6 +23,14 @@ class ColumnQdrantRepository:
                 vectors_config={"size": size, "distance": "Cosine"},
             )
 
+    async def clear(self) -> None:
+        """清空整个集合（重建前调用，保证索引与 meta 库完全一致）。"""
+        client = qdrant_client_manager.client
+        if client is None:
+            raise RuntimeError("Qdrant client 未初始化，请检查 lifespan")
+        if await client.collection_exists(COLUMN_COLLECTION):
+            await client.delete_collection(COLUMN_COLLECTION)
+
     async def upsert(self, entries: list[tuple[str, list[float], ColumnInfo]]) -> None:
         """批量写入向量点：entries = [(point_id, vector, ColumnInfo)]，payload 存完整字段信息。"""
         client = qdrant_client_manager.client

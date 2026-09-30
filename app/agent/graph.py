@@ -81,11 +81,22 @@ graph_builder.add_edge("filter_metric", "add_extra_context")
 graph_builder.add_edge("add_extra_context", "generate_sql")
 graph_builder.add_edge("generate_sql", "validate_sql")
 
-# SQL 校验通过就直接执行，校验失败则先进入修正节点
+# SQL 校验通过就直接执行；权限校验失败（permission_blocked）直接结束（一票否决）；
+# 语法错误则先进入修正节点
+def _validate_route(state: dict) -> str:
+    if state.get("permission_blocked"):
+        return "permission_blocked"
+    return "run_sql" if state["error"] is None else "correct_sql"
+
+
 graph_builder.add_conditional_edges(
     source="validate_sql",
-    path=lambda state: "run_sql" if state["error"] is None else "correct_sql",
-    path_map={"run_sql": "run_sql", "correct_sql": "correct_sql"},
+    path=_validate_route,
+    path_map={
+        "run_sql": "run_sql",
+        "correct_sql": "correct_sql",
+        "permission_blocked": END,
+    },
 )
 graph_builder.add_edge("correct_sql", "run_sql")
 graph_builder.add_edge("run_sql", END)
@@ -108,6 +119,14 @@ if __name__ == "__main__":
         dw_mysql_client_manager.init()
 
         # 仓储层在 client manager 内部维护连接池，直接复用模块级单例
+        from app.core.permissions import (
+            allowed_tables,
+            deny_tables,
+            forbid_columns,
+            row_scope,
+            sensitive_columns,
+        )
+
         context = TournamentAgentContext(
             column_qdrant_repository=column_qdrant_repository,
             embedding_client=embedding_client_manager.client,
@@ -115,6 +134,13 @@ if __name__ == "__main__":
             value_es_repository=value_es_repository,
             meta_mysql_repository=meta_mysql_repository,
             dw_mysql_repository=dw_mysql_repository,
+            role="guest",
+            user_id=None,
+            allowed_tables=allowed_tables("guest"),
+            deny_tables=deny_tables("guest"),
+            sensitive_columns=sensitive_columns(),
+            forbid_columns=forbid_columns(),
+            row_scope=row_scope("guest"),
         )
 
         # 当前只需要传入原始问题，后续节点会逐步写回召回、过滤和额外上下文结果

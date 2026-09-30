@@ -244,7 +244,8 @@ class MetaKnowledgeService:
                     table_id=t.name,
                 ))
 
-        # 为 sync:true 的字段补充真实示例值
+        # 为 sync:true 的字段补充真实示例值（仅保留前 5 条，控制上下文体积；
+        # 更新/新增业务数据后无需重跑 seed，检索链路对未收录新值走 DW 兜底查询）
         for t in config.tables:
             for col in t.columns:
                 if not col.sync:
@@ -252,7 +253,7 @@ class MetaKnowledgeService:
                 samples = await self.dw_repo.get_column_values(t.name, col.name)
                 if samples:
                     target = next(x for x in column_infos if x.id == f"{t.name}.{col.name}")
-                    target.examples = samples
+                    target.examples = samples[:5]
 
         metric_infos = [
             MetricInfo(
@@ -300,8 +301,14 @@ class MetaKnowledgeService:
     # ================= 步骤 B：meta MySQL → Qdrant / ES（索引构建） =================
 
     async def build(self) -> None:
-        """把 meta 库元数据向量化写入 Qdrant（字段/指标），取值写入 ES。"""
+        """把 meta 库元数据向量化写入 Qdrant（字段/指标），取值写入 ES。
+
+        构建前先清空 Qdrant 集合与 ES 索引，保证索引与 meta 库完全一致（幂等重建）。
+        """
         size = self._embedding_size()
+        await self.column_qdrant_repo.clear()
+        await self.metric_qdrant_repo.clear()
+        await self.value_es_repo.clear()
         await self.column_qdrant_repo.ensure_collection(size)
         await self.metric_qdrant_repo.ensure_collection(size)
 

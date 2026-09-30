@@ -186,13 +186,22 @@ class DWMySQLRepository:
             row = await session.get(AppUserInfoMySQL, user_id)
             return AppUserMapper.to_entity(row) if row else None
 
-    async def create_user(self, nickname: str, phone: str) -> AppUserInfo:
+    async def create_user(self, nickname: str, phone: str, password_hash: str | None = None) -> AppUserInfo:
         async with dw_mysql_client_manager.session_factory() as session:
-            model = AppUserInfoMySQL(nickname=nickname, phone=phone)  # id 由数据库自增
+            model = AppUserInfoMySQL(nickname=nickname, phone=phone, password_hash=password_hash)  # id 由数据库自增
             session.add(model)
             await session.commit()
             await session.refresh(model)  # 回读自增 id 与 server_default 字段
             return AppUserMapper.to_entity(model)
+
+    async def update_user_password(self, user_id: int, password_hash: str) -> None:
+        """更新用户密码哈希（首次设置 / 修改密码）。"""
+        async with dw_mysql_client_manager.session_factory() as session:
+            model = await session.get(AppUserInfoMySQL, user_id)
+            if model is None:
+                raise ValueError(f"用户不存在: {user_id}")
+            model.password_hash = password_hash
+            await session.commit()
 
     # ================= 赛事（写） =================
     async def create_tournament(self, entity: TournamentInfo) -> TournamentInfo:

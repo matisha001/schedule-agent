@@ -17,6 +17,7 @@ from app.entities.team_info import TeamInfo
 from app.entities.tournament_info import TournamentInfo
 from app.entities.tournament_phase_info import TournamentPhaseInfo
 from app.repositories.mysql.dw.dw_mysql_repository import dw_mysql_repository as repo
+from app.services.security import hash_password, verify_password
 
 # 状态常量
 TOURNAMENT_STATUS: dict[int, str] = {0: "草稿", 1: "已发布", 2: "报名中", 3: "比赛中", 4: "已结束"}
@@ -65,14 +66,29 @@ def _tournament_out(t: TournamentInfo, extra: dict | None = None) -> dict[str, A
 
 class TournamentService:
     # ---------- 登录 ----------
-    async def login(self, phone: str) -> dict[str, Any]:
+    async def login(self, phone: str, password: str) -> dict[str, Any]:
+        """手机号 + 密码登录：新用户自动注册并设置密码；老用户校验密码。
+
+        - 已设密码的用户：密码不匹配抛 401（统一报"手机号或密码错误"，不泄露账号存在性）
+        - 历史无密码用户（password_hash 为空）：首次登录时设置密码，完成账号认领
+        """
         phone = phone.strip()
         if not _PHONE_RE.match(phone):
             raise HTTPException(status_code=400, detail="请输入有效的 11 位手机号")
+        if not 6 <= len(password) <= 64:
+            raise HTTPException(status_code=400, detail="密码长度需为 6-64 位")
+
         user = await repo.find_user_by_phone(phone)
         if user is None:
             nickname = f"玩家{phone[-4:]}"
-            user = await repo.create_user(nickname=nickname, phone=phone)
+            user = await repo.create_user(nickname=nickname, phone=phone, password_hash=hash_password(password))
+        elif user.password_hash is None:
+            # 历史无密码用户：首次登录即设置密码（认领账号）
+            await repo.update_user_password(user.id, hash_password(password))
+            user.password_hash = None  # 实体不回传哈希
+        elif not verify_password(password, user.password_hash):
+            raise HTTPException(status_code=401, detail="手机号或密码错误")
+
         token = create_token(user.id)
         return {"token": token, "user": {"id": user.id, "nickname": user.nickname, "phone": user.phone, "created_at": user.created_at}}
 

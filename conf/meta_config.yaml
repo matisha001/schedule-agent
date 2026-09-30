@@ -23,6 +23,11 @@ tables:
     description: 手机号
     alias: []
     sync: true
+  - name: password_hash
+    role: dimension
+    description: password hash
+    alias: []
+    sync: false
   - name: created_at
     role: date
     description: 创建时间
@@ -308,7 +313,6 @@ tables:
     description: 更新时间
     alias: []
     sync: false
-
 metrics:
 - name: 报名队伍数
   agg_type: count

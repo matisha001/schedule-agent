@@ -12,7 +12,7 @@ auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 @auth_router.post("/login", response_model=LoginOut)
 async def login(payload: LoginSchema):
-    return await tournament_service.login(payload.phone)
+    return await tournament_service.login(payload.phone, payload.password)
 
 
 @auth_router.get("/me", response_model=UserOut)

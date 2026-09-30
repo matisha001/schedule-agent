@@ -64,10 +64,10 @@ export async function api<T = unknown>(
 }
 
 export const authApi = {
-  login: (phone: string) =>
+  login: (phone: string, password: string) =>
     api<{ token: string; user: import("../types").User }>("/api/auth/login", {
       method: "POST",
-      body: { phone },
+      body: { phone, password },
       auth: false,
     }),
   me: () => api<import("../types").User>("/api/auth/me"),

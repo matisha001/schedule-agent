@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS app_user (
     guid       BIGINT       DEFAULT NULL COMMENT '平台 GUID',
     nickname   VARCHAR(64)  NOT NULL COMMENT '昵称',
     phone      VARCHAR(32)  DEFAULT NULL COMMENT '手机号',
+    password_hash VARCHAR(255) DEFAULT NULL COMMENT '密码哈希(PBKDF2)',
     created_at DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     PRIMARY KEY (id)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COMMENT = '用户基础信息';

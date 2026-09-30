@@ -13,4 +13,5 @@ class AppUserInfoMySQL(Base):
     guid: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     nickname: Mapped[str] = mapped_column(String(64))
     phone: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[str] = mapped_column(DateTime, server_default="CURRENT_TIMESTAMP")

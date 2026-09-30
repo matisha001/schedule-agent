@@ -8,5 +8,6 @@ class AppUserInfo:
     nickname: str
     guid: int | None = None
     phone: str | None = None
+    password_hash: str | None = None
     id: int | None = None
     created_at: str | None = None

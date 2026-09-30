@@ -14,6 +14,7 @@ class AppUserMapper:
             nickname=model.nickname,
             guid=model.guid,
             phone=model.phone,
+            password_hash=model.password_hash,
             created_at=model.created_at,
         )
 

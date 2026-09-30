@@ -77,9 +77,6 @@ export function PortalLayout() {
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-6">
         <Outlet key={location.pathname} />
       </main>
-      <footer className="border-t border-gray-200 bg-white py-4 text-center text-xs text-gray-400">
-        赛事官网 · 玩家可通过赛事详情页或办赛者分享的报名链接报名参赛
-      </footer>
     </div>
   );
 }

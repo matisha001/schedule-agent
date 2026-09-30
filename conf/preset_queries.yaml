@@ -30,17 +30,26 @@ preset_queries:
   # ========== player 玩家（登录，我的比赛分析） ==========
   - id: p1
     title: 我的比赛仪表盘
-    template: 我报名参加的比赛有哪些？分别打到什么阶段了？
+    template: 我报名参加的{{赛事名}}打到什么阶段了？
+    params:
+      - key: 赛事名
+        source: tournaments
     visible_to: [player]
     order: 1
   - id: p2
     title: 我最近的战绩
-    template: 我最近参加的几场对局分别对阵谁、比分多少？
+    template: 我最近参加的{{赛事名}}几场对局分别对阵谁、比分多少？
+    params:
+      - key: 赛事名
+        source: tournaments
     visible_to: [player]
     order: 2
   - id: p3
     title: 我的队伍现在咋样？
-    template: 我所在队伍目前状态如何？都有哪些成员？
+    template: 我参加的{{赛事名}}所在队伍目前状态如何？都有哪些成员？
+    params:
+      - key: 赛事名
+        source: tournaments
     visible_to: [player]
     order: 3
   - id: p4

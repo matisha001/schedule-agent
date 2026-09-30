@@ -6,6 +6,7 @@ import { ArrowLeft, Link2 } from "lucide-react";
 import type { TournamentDetail } from "../../types";
 import { ApiError, tournamentApi } from "../../lib/api";
 import { Badge, Button, Empty, ErrorBanner, Spinner } from "../../components/ui";
+import { alertDialog } from "../../components/dialog";
 import BasicConfigTab from "./tabs/BasicConfigTab";
 import RegistrationTab from "./tabs/RegistrationTab";
 import SchedulesTab from "./tabs/SchedulesTab";
@@ -51,7 +52,7 @@ export default function AdminTournamentDetailPage() {
       await tournamentApi.transition(detail.id, action);
       load();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "操作失败");
+      await alertDialog(err instanceof ApiError ? err.message : "操作失败", { title: "操作失败" });
     }
   };
 
@@ -74,11 +75,11 @@ export default function AdminTournamentDetailPage() {
           <Button
             variant="secondary"
             size="sm"
-            onClick={() => {
-              navigator.clipboard?.writeText(
+            onClick={async () => {
+              await navigator.clipboard?.writeText(
                 `${window.location.origin}/register/${detail.id}`,
               );
-              alert("报名链接已复制，可分享给玩家");
+              await alertDialog("报名链接已复制，可分享给玩家", { title: "复制成功" });
             }}
           >
             <Link2 className="h-3.5 w-3.5" /> 复制报名链接

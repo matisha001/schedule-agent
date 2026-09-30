@@ -12,6 +12,7 @@ import {
   Input,
   Modal,
 } from "../../../components/ui";
+import { alertDialog, confirmDialog } from "../../../components/dialog";
 import { formatDateTime, playerStatusLabel } from "../../../lib/format";
 
 export default function RegistrationTab({
@@ -33,22 +34,22 @@ export default function RegistrationTab({
   ];
 
   const teamAction = async (team: Team, status: number, tip: string) => {
-    if (!window.confirm(`确定${tip}「${team.name}」吗？`)) return;
+    if (!(await confirmDialog(`确定${tip}「${team.name}」吗？`))) return;
     try {
       await tournamentApi.teamStatus(team.id, status);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "操作失败");
+      await alertDialog(err instanceof ApiError ? err.message : "操作失败", { title: "操作失败" });
     }
   };
 
   const removeTeam = async (team: Team) => {
-    if (!window.confirm(`删除队伍「${team.name}」及其所有队员？`)) return;
+    if (!(await confirmDialog(`删除队伍「${team.name}」及其所有队员？`, { title: "删除确认", danger: true }))) return;
     try {
       await tournamentApi.removeTeam(team.id);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "删除失败");
+      await alertDialog(err instanceof ApiError ? err.message : "删除失败", { title: "删除失败" });
     }
   };
 
@@ -57,7 +58,7 @@ export default function RegistrationTab({
       await tournamentApi.playerStatus(playerId, status);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "操作失败");
+      await alertDialog(err instanceof ApiError ? err.message : "操作失败", { title: "操作失败" });
     }
   };
 
@@ -66,17 +67,17 @@ export default function RegistrationTab({
       await tournamentApi.removePlayer(playerId);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "删除失败");
+      await alertDialog(err instanceof ApiError ? err.message : "删除失败", { title: "删除失败" });
     }
   };
 
   const setCaptain = async (playerId: number, nickname: string) => {
-    if (!window.confirm(`将「${nickname}」设为队长？原队长将转为普通队员。`)) return;
+    if (!(await confirmDialog(`将「${nickname}」设为队长？原队长将转为普通队员。`))) return;
     try {
       await tournamentApi.setCaptain(playerId);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "操作失败");
+      await alertDialog(err instanceof ApiError ? err.message : "操作失败", { title: "操作失败" });
     }
   };
 

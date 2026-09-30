@@ -297,6 +297,32 @@ def build_server():
     return server
 
 
+def run_streamable_http(server: "MCPServer", host: str, port: int) -> None:
+    """以 streamable-http 模式启动，并挂载 CORS 中间件支持浏览器跨域调用。
+
+    SDK 的 server.run() 无法注入 CORS，因此手动构建 Starlette app：
+    - 端点路径固定 /mcp（与 SDK 默认一致）
+    - 允许任意来源的浏览器调用（前端 dev server 5173 与第三方 MCP 客户端）
+    - expose mcp-session-id / mcp-session-expiry，供浏览器读取会话响应头
+    """
+    import anyio
+    import uvicorn
+    from starlette.middleware.cors import CORSMiddleware
+
+    async def serve() -> None:
+        app = server.streamable_http_app(streamable_http_path="/mcp")
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+            expose_headers=["mcp-session-id", "mcp-session-expiry"],
+        )
+        await uvicorn.Server(uvicorn.Config(app, host=host, port=port)).serve()
+
+    anyio.run(serve)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="赛事问数助手 MCP 服务")
     parser.add_argument(
@@ -313,7 +339,7 @@ def main() -> None:
     if args.transport == "stdio":
         server.run(transport="stdio")
     else:
-        server.run(transport="streamable-http", host=args.host, port=args.port)
+        run_streamable_http(server, args.host, args.port)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
-/** 通用 UI 组件：Button / Input / Select / Textarea / Badge / Modal / Spinner / Empty / Field。 */
+/** 通用 UI 组件：Button / Input / Select / Textarea / Badge / Modal / Spinner / Empty / Field / DialogHost。 */
 
-import { useEffect, type ReactNode, type SelectHTMLAttributes } from "react";
+import { useEffect, useState, type ReactNode, type SelectHTMLAttributes } from "react";
 import { Loader2, X } from "lucide-react";
 import { statusColor } from "../lib/format";
 
@@ -123,6 +123,61 @@ export function Modal({
         )}
       </div>
     </div>
+  );
+}
+
+/* ---------- DialogHost（命令式对话框的受控宿主，由 components/dialog.tsx 驱动） ---------- */
+
+export type DialogState = {
+  message: string;
+  title: string;
+  okText: string;
+  /** null 表示无取消按钮（信息提示型）；否则为取消按钮文案（确认型） */
+  cancelText: string | null;
+  danger: boolean;
+  resolve: (value: boolean) => void;
+};
+
+export function DialogHost({
+  initial,
+  register,
+}: {
+  initial: DialogState | null;
+  register: (updater: (state: DialogState | null) => void) => void;
+}) {
+  const [state, setState] = useState<DialogState | null>(initial);
+
+  useEffect(() => {
+    register(setState);
+    return () => register(() => {});
+  }, [register]);
+
+  if (!state) return null;
+  const close = (value: boolean) => {
+    state.resolve(value);
+    setState(null);
+  };
+  return (
+    <Modal
+      open
+      title={state.title}
+      onClose={() => close(false)}
+      width="max-w-md"
+      footer={
+        <>
+          {state.cancelText !== null && (
+            <Button variant="secondary" onClick={() => close(false)}>
+              {state.cancelText}
+            </Button>
+          )}
+          <Button variant={state.danger ? "danger" : "primary"} onClick={() => close(true)}>
+            {state.okText}
+          </Button>
+        </>
+      }
+    >
+      <p className="whitespace-pre-line text-sm text-gray-700 dark:text-gray-300">{state.message}</p>
+    </Modal>
   );
 }
 

@@ -33,6 +33,8 @@
 
 ## 系统架构
 
+![赛事管理模块整体架构图（分层 + 业务泳道 + 状态机）](docs/schedule-agent.png)
+
 ```
 ┌───────────────────────── 前端 (React) ─────────────────────────┐
 │  官网（玩家）：赛事列表/详情/报名/我的赛事/Ask 问数             │
@@ -153,6 +155,12 @@ app_user（用户） ──1:N── tournament（赛事） ──1:N── tour
   /admin/users                  用户权限管理（仅超管：分页列表 + 角色调整）
 ```
 
+Ask 问数页效果（首页预置提示词 + SSE 流式展示执行步骤 / 生成 SQL / 结果表格）：
+
+![Ask 问数助手首页](docs/ask-376.png)
+
+![Ask 问数助手执行结果](docs/ask-439.png)
+
 ## 目录结构
 
 ```
@@ -213,6 +221,8 @@ START → extract_keywords
         correct_sql ←──┘ error 非空（修正后重入 run_sql）
 ```
 
+![问数 Agent 调用流程图（LangGraph 12 节点）](docs/agent-6734.png)
+
 ## MCP 服务（独立模块，与 Agent 功能相互独立）
 
 MCP 服务（`app/mcp/`）是一个**独立模块**，以**独立进程**运行（不经 `main.py` 挂载、不挂 FastAPI 路由），通过 stdio / streamable-http 对外提供 MCP 协议能力，把赛事业务 API 封装为 MCP 工具，供任何支持 MCP 的客户端（Claude Desktop / Cursor / 豆包等）调用。
@@ -230,6 +240,10 @@ MCP 服务（`app/mcp/`）是一个**独立模块**，以**独立进程**运行�
 - **不包含、不暴露问数 Agent 工作流**：MCP 不提供 SQL 生成，不接 LLM 与知识库，二者能力边界完全分离；
 - **复用后端权限矩阵**：未登录 = guest（仅公开数据）；通过环境变量 `TOURNAMENT_API_TOKEN` 注入登录 token 后按角色（player/organizer/operator/super_admin）访问，写操作权限与后端一致；
 - **工具清单**：8 个只读工具（赛事/阶段/队伍/选手/对局/预制提示词查询）+ 8 个比赛主流程写工具（创建赛事/状态流转/创建阶段/报名/审核/对局），详见 `app/mcp/README.md`。
+
+![MCP 接入方式与工具调用流程](docs/mcp-326.png)
+
+![MCP 服务接入页效果：连接成功并加载工具清单](docs/mcp-816.png)
 
 ## 代码分层
 

@@ -20,6 +20,7 @@ import {
   ErrorBanner,
   Spinner,
 } from "../../components/ui";
+import { alertDialog } from "../../components/dialog";
 import RegisterTeamModal from "./RegisterTeamModal";
 import { formatDateTime, registMethodLabel, teamModeLabel } from "../../lib/format";
 
@@ -118,11 +119,11 @@ export default function TournamentDetailPage() {
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => {
-                navigator.clipboard?.writeText(
+              onClick={async () => {
+                await navigator.clipboard?.writeText(
                   `${window.location.origin}/register/${detail.id}`,
                 );
-                alert("报名链接已复制，可分享给玩家");
+                await alertDialog("报名链接已复制，可分享给玩家", { title: "复制成功" });
               }}
             >
               <Link2 className="h-3.5 w-3.5" /> 复制报名链接

@@ -5,6 +5,7 @@ import { CalendarClock, Plus, Trash2 } from "lucide-react";
 import type { TournamentDetail } from "../../../types";
 import { ApiError, tournamentApi } from "../../../lib/api";
 import { Button, Field, Input, Select, Textarea } from "../../../components/ui";
+import { alertDialog, confirmDialog } from "../../../components/dialog";
 import { formatDateTime } from "../../../lib/format";
 
 export default function BasicConfigTab({
@@ -39,7 +40,7 @@ export default function BasicConfigTab({
   const save = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写赛事名称");
+      await alertDialog("请填写赛事名称");
       return;
     }
     setSaving(true);
@@ -52,10 +53,10 @@ export default function BasicConfigTab({
         reg_start_time: form.reg_start_time || null,
         reg_end_time: form.reg_end_time || null,
       });
-      alert("已保存");
+      await alertDialog("已保存", { title: "保存成功" });
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "保存失败");
+      await alertDialog(err instanceof ApiError ? err.message : "保存失败", { title: "保存失败" });
     } finally {
       setSaving(false);
     }
@@ -69,17 +70,17 @@ export default function BasicConfigTab({
       setAddingPhase(false);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "添加失败");
+      await alertDialog(err instanceof ApiError ? err.message : "添加失败", { title: "添加失败" });
     }
   };
 
   const removePhase = async (phaseId: number, phaseName: string) => {
-    if (!window.confirm(`删除阶段「${phaseName}」？其下的对局也将被删除。`)) return;
+    if (!(await confirmDialog(`删除阶段「${phaseName}」？其下的对局也将被删除。`, { title: "删除确认", danger: true }))) return;
     try {
       await tournamentApi.removePhase(phaseId);
       onChanged();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "删除失败");
+      await alertDialog(err instanceof ApiError ? err.message : "删除失败", { title: "删除失败" });
     }
   };
 

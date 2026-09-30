@@ -14,6 +14,7 @@ import {
   Select,
   Spinner,
 } from "../../../components/ui";
+import { alertDialog, confirmDialog } from "../../../components/dialog";
 import { formatDateTime } from "../../../lib/format";
 
 const EMPTY_SCHEDULE = {
@@ -70,12 +71,12 @@ export default function SchedulesTab({
   }, [schedules, detail.phases]);
 
   const remove = async (s: Schedule) => {
-    if (!window.confirm(`删除对局「${s.home_team_name} vs ${s.away_team_name}」？`)) return;
+    if (!(await confirmDialog(`删除对局「${s.home_team_name} vs ${s.away_team_name}」？`, { title: "删除确认", danger: true }))) return;
     try {
       await tournamentApi.removeSchedule(s.id);
       load();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "删除失败");
+      await alertDialog(err instanceof ApiError ? err.message : "删除失败", { title: "删除失败" });
     }
   };
 

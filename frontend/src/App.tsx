@@ -9,6 +9,7 @@ import TournamentListPage from "./pages/portal/TournamentListPage";
 import TournamentDetailPage from "./pages/portal/TournamentDetailPage";
 import MyTournamentsPage from "./pages/portal/MyTournamentsPage";
 import AskPage from "./pages/portal/AskPage";
+import McpPage from "./pages/portal/McpPage";
 import AdminTournamentsPage from "./pages/admin/AdminTournamentsPage";
 import AdminTournamentDetailPage from "./pages/admin/AdminTournamentDetailPage";
 import AdminUsersPage from "./pages/admin/AdminUsersPage";
@@ -36,6 +37,7 @@ export default function App() {
           }
         />
         <Route path="ask" element={<AskPage />} />
+        <Route path="mcp" element={<McpPage />} />
         <Route
           path="account"
           element={

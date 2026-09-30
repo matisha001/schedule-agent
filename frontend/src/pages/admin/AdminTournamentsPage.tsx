@@ -17,6 +17,7 @@ import {
   Spinner,
   Textarea,
 } from "../../components/ui";
+import { alertDialog, confirmDialog } from "../../components/dialog";
 import { formatDateTime, registMethodLabel, teamModeLabel } from "../../lib/format";
 
 const EMPTY_FORM = {
@@ -59,12 +60,12 @@ export default function AdminTournamentsPage() {
   }, [load]);
 
   const handleDelete = async (t: Tournament) => {
-    if (!window.confirm(`确定删除赛事「${t.name}」吗？其阶段、报名队伍与对局将一并删除，不可恢复。`)) return;
+    if (!(await confirmDialog(`确定删除赛事「${t.name}」吗？其阶段、报名队伍与对局将一并删除，不可恢复。`, { title: "删除确认", danger: true }))) return;
     try {
       await tournamentApi.remove(t.id);
       load();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "删除失败");
+      await alertDialog(err instanceof ApiError ? err.message : "删除失败", { title: "删除失败" });
     }
   };
 
@@ -72,14 +73,14 @@ export default function AdminTournamentsPage() {
     const url = `${window.location.origin}/register/${t.id}`;
     navigator.clipboard
       ?.writeText(url)
-      .then(() => alert(`报名链接已复制：\n${url}`))
-      .catch(() => alert(`复制失败，请手动复制：\n${url}`));
+      .then(() => alertDialog(`报名链接已复制：\n${url}`))
+      .catch(() => alertDialog(`复制失败，请手动复制：\n${url}`, { title: "复制失败" }));
   };
 
   const submitCreate = async (e: FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) {
-      alert("请填写赛事名称");
+      await alertDialog("请填写赛事名称");
       return;
     }
     setSubmitting(true);
@@ -96,7 +97,7 @@ export default function AdminTournamentsPage() {
       setForm(EMPTY_FORM);
       load();
     } catch (err) {
-      alert(err instanceof ApiError ? err.message : "创建失败");
+      await alertDialog(err instanceof ApiError ? err.message : "创建失败", { title: "创建失败" });
     } finally {
       setSubmitting(false);
     }

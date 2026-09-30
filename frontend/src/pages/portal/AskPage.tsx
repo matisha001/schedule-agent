@@ -1,13 +1,31 @@
-/** 官网：自然语言问数助手（不强制登录：游客仅公开数据；预制提示词按登录态+角色展示）。 */
+/** 官网：自然语言问数助手（不强制登录：游客仅公开数据；预制提示词按登录态+角色展示）。
+ * 支持多个对话窗口：左侧会话列表可新建/切换/删除，每个窗口独立消息历史。
+ *
+ * 本次增强：
+ * 1) 聊天式布局：消息区占满视口并滚动，输入框固定到底部；
+ * 2) 对话数据持久化到 IndexedDB：切换 tab / 刷新后恢复（按用户隔离，游客=guest）；
+ * 3) MCP 接入已独立为「MCP 服务」页面（/mcp），与问数助手在导航栏并列。 */
 
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Loader2, Send, Sparkles, CheckCircle2, XCircle, AlertTriangle, Circle } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Circle,
+  Loader2,
+  Plus,
+  Send,
+  Sparkles,
+  X,
+  XCircle,
+} from "lucide-react";
 import { fetchPresets, streamQuery } from "../../lib/agentApi";
 import type { AgentEvent, DoneEvent, PresetQuery } from "../../types";
 import { useAuth } from "../../lib/auth";
 import { ROLE_LABELS } from "../../types";
 import { api } from "../../lib/api";
 import { Button, Modal } from "../../components/ui";
+import { confirmDialog } from "../../components/dialog";
+import { idbGet, idbSet } from "../../lib/idb";
 
 interface Message {
   id: number;
@@ -15,6 +33,20 @@ interface Message {
   content: string;
   events: AgentEvent[];
   error?: string;
+}
+
+/** 一个对话窗口：独立消息历史，标题取首条提问 */
+interface Conversation {
+  id: number;
+  title: string;
+  messages: Message[];
+}
+
+/** IndexedDB 中保存的会话快照 */
+interface ConversationSnapshot {
+  conversations: Conversation[];
+  activeId: number;
+  seq: number;
 }
 
 type NodeStatus = "pending" | "running" | "success" | "error" | "warning";
@@ -165,8 +197,6 @@ const SCOPE_HINTS: Record<string, string> = {
   super_admin: "超级管理员：可查询平台全部数据",
 };
 
-let msgSeq = 0;
-
 function ResultTable({ done }: { done: DoneEvent }) {
   const columns = done.result?.columns ?? [];
   const rows = done.result?.rows ?? [];
@@ -199,7 +229,7 @@ function ResultTable({ done }: { done: DoneEvent }) {
   );
 }
 
-/** 预制提示词 chips：点击直接提问；带 params 的（办赛者 o2/o3/o4）先弹赛事选择器 */
+/** 预制提示词 chips：点击直接提问；带 params 的（需选赛事）先弹赛事选择器 */
 function PresetChips({
   presets,
   onPick,
@@ -226,14 +256,62 @@ function PresetChips({
 
 export default function AskPage() {
   const { user } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
+  // 多窗口对话：会话列表 + 当前活跃窗口，各自独立消息历史
+  const seqRef = useRef(1);
+  const [conversations, setConversations] = useState<Conversation[]>([
+    { id: 1, title: "新对话", messages: [] },
+  ]);
+  const [activeId, setActiveId] = useState(1);
+  const [hydrated, setHydrated] = useState(false);
+  const active = conversations.find((c) => c.id === activeId) ?? conversations[0];
+
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [presets, setPresets] = useState<PresetQuery[]>([]);
   const [presetModal, setPresetModal] = useState<PresetQuery | null>(null);
   const [tournaments, setTournaments] = useState<{ id: number; name: string }[]>([]);
   const [tournamentLoading, setTournamentLoading] = useState(false);
+  const [selectedTournamentId, setSelectedTournamentId] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+
+  // 会话按用户隔离：未登录 = guest；登录后按 user.id 分区
+  const storageKey = `ask-${user?.id ?? "guest"}`;
+
+  // 进入页面 / 切换账号时从 IndexedDB 恢复会话
+  useEffect(() => {
+    let alive = true;
+    setHydrated(false);
+    (async () => {
+      const saved = await idbGet<ConversationSnapshot>(storageKey);
+      if (!alive) return;
+      if (saved && saved.conversations.length > 0) {
+        seqRef.current = saved.seq || 1;
+        setConversations(saved.conversations);
+        setActiveId(saved.activeId ?? saved.conversations[0].id);
+      } else {
+        seqRef.current = 1;
+        setConversations([{ id: 1, title: "新对话", messages: [] }]);
+        setActiveId(1);
+      }
+      setHydrated(true);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [storageKey]);
+
+  // 会话变化（防抖 300ms）写入 IndexedDB，切换 tab / 刷新后数据保留
+  useEffect(() => {
+    if (!hydrated) return;
+    const timer = setTimeout(() => {
+      void idbSet<ConversationSnapshot>(storageKey, {
+        conversations,
+        activeId,
+        seq: seqRef.current,
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [conversations, activeId, hydrated, storageKey]);
 
   // 预制提示词按登录态 + 角色加载（游客只拿到公开 4 条）
   useEffect(() => {
@@ -244,12 +322,23 @@ export default function AskPage() {
     const query = (queryText ?? input).trim();
     if (!query || loading) return;
     setInput("");
-    const id = ++msgSeq;
-    setMessages((prev) => [
-      ...prev,
-      { id, role: "user", content: query, events: [] },
-      { id: id + 0.5, role: "assistant", content: "", events: [] },
-    ]);
+    const id = ++seqRef.current;
+    // 首条提问作为会话标题（截断），消息追加到活跃窗口
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === activeId
+          ? {
+              ...c,
+              title: c.messages.length === 0 ? query.slice(0, 24) : c.title,
+              messages: [
+                ...c.messages,
+                { id, role: "user", content: query, events: [] },
+                { id: id + 0.5, role: "assistant", content: "", events: [] },
+              ],
+            }
+          : c,
+      ),
+    );
     setLoading(true);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -257,16 +346,34 @@ export default function AskPage() {
       await streamQuery(
         query,
         (event) => {
-          setMessages((prev) =>
-            prev.map((m) => (m.id === id + 0.5 ? { ...m, events: [...m.events, event] } : m)),
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === activeId
+                ? {
+                    ...c,
+                    messages: c.messages.map((m) =>
+                      m.id === id + 0.5 ? { ...m, events: [...m.events, event] } : m,
+                    ),
+                  }
+                : c,
+            ),
           );
         },
         controller.signal,
       );
     } catch (err) {
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === id + 0.5 ? { ...m, error: err instanceof Error ? err.message : String(err) } : m,
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === activeId
+            ? {
+                ...c,
+                messages: c.messages.map((m) =>
+                  m.id === id + 0.5
+                    ? { ...m, error: err instanceof Error ? err.message : String(err) }
+                    : m,
+                ),
+              }
+            : c,
         ),
       );
     } finally {
@@ -281,6 +388,27 @@ export default function AskPage() {
   const doneEvent = (m: Message): DoneEvent | undefined =>
     m.events.find((e) => e.type === "done") as DoneEvent | undefined;
 
+  // 新建对话窗口并切换过去
+  const newConversation = () => {
+    const fresh = { id: ++seqRef.current, title: "新对话", messages: [] };
+    setConversations((prev) => [...prev, fresh]);
+    setActiveId(fresh.id);
+  };
+
+  // 删除对话窗口（保留最后一个时自动新建一个空窗口）
+  const removeConversation = async (id: number) => {
+    if (!(await confirmDialog("删除该对话窗口？其中的对话记录将不可恢复。"))) return;
+    const next = conversations.filter((c) => c.id !== id);
+    if (next.length === 0) {
+      const fresh = { id: ++seqRef.current, title: "新对话", messages: [] };
+      setConversations([fresh]);
+      setActiveId(fresh.id);
+    } else {
+      setConversations(next);
+      if (id === activeId) setActiveId(next[next.length - 1].id);
+    }
+  };
+
   // 点击预制提示词：无参数直接提问；有参数（需选赛事）弹选择器
   const onPickPreset = (template: string, picked: PresetQuery[]) => {
     const p = picked[0];
@@ -289,9 +417,14 @@ export default function AskPage() {
       if (tournaments.length === 0) {
         setTournamentLoading(true);
         api<{ id: number; name: string }[]>("/api/tournaments?scope=published")
-          .then(setTournaments)
+          .then((list) => {
+            setTournaments(list);
+            setSelectedTournamentId(list[0]?.id ?? null);
+          })
           .catch(() => setTournaments([]))
           .finally(() => setTournamentLoading(false));
+      } else {
+        setSelectedTournamentId(tournaments[0].id);
       }
       return;
     }
@@ -300,7 +433,8 @@ export default function AskPage() {
 
   const submitPreset = () => {
     if (!presetModal) return;
-    const selected = tournaments[0];
+    const selected =
+      tournaments.find((t) => t.id === selectedTournamentId) ?? tournaments[0];
     if (!selected) return;
     const query = presetModal.template.replaceAll("{{赛事名}}", selected.name);
     setPresetModal(null);
@@ -308,72 +442,126 @@ export default function AskPage() {
   };
 
   const scopeHint = SCOPE_HINTS[user?.role ?? "guest"] ?? SCOPE_HINTS.guest;
+  const messages = active.messages;
 
   return (
-    <div className="mx-auto flex min-h-[70vh] max-w-3xl flex-col">
-      <header className="mb-4 text-center">
-        <h1 className="text-2xl font-semibold text-gray-900">赛事问数助手</h1>
-        <p className="mt-1 text-sm text-gray-500">用自然语言查询赛程、比分、报名与统计</p>
-        <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
-          {user ? `已登录 · ${ROLE_LABELS[user.role ?? "player"] ?? "玩家"}` : "游客模式（未登录）"} · {scopeHint}
-        </p>
-      </header>
-      <main className="flex-1 space-y-4 overflow-y-auto pb-4">
-        {messages.length === 0 && (
-          <div className="space-y-4 pt-8 text-center">
-            <p className="text-sm text-gray-400">
-              试试问：「XX 队最近 5 场比赛的比分」或「本届赛事小组赛积分榜」
-            </p>
-            <PresetChips presets={presets} onPick={onPickPreset} />
-          </div>
-        )}
-        {messages.map((m) =>
-          m.role === "user" ? (
-            <div key={m.id} className="flex justify-end">
-              <div className="max-w-[80%] rounded-2xl rounded-br-md bg-blue-600 px-4 py-2 text-white shadow-sm">
-                {m.content}
+    <div className="mx-auto flex h-[calc(100vh-6.5rem)] min-h-[520px] max-w-5xl flex-col gap-4 md:flex-row">
+      {/* 会话列表：新建/切换/删除窗口（窄屏横向滚动，宽屏纵向） */}
+      <aside className="flex w-full shrink-0 flex-col gap-1 md:w-56">
+        <button
+          onClick={newConversation}
+          className="flex items-center justify-center gap-1.5 rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          <Plus className="h-4 w-4" /> 新对话
+        </button>
+        <div className="flex min-h-0 flex-1 gap-1 overflow-x-auto pb-1 md:flex-col md:overflow-x-visible md:overflow-y-auto">
+          {conversations.map((c) => {
+            const isActive = c.id === activeId;
+            return (
+              <div
+                key={c.id}
+                className={`group flex shrink-0 items-center gap-1 rounded-xl border px-3 py-2 ${
+                  isActive
+                    ? "border-blue-200 bg-blue-50"
+                    : "border-gray-200 bg-white hover:bg-gray-50"
+                }`}
+              >
+                <button
+                  onClick={() => setActiveId(c.id)}
+                  className="min-w-0 flex-1 truncate text-left text-sm text-gray-700"
+                  title={c.title}
+                >
+                  {c.title}
+                </button>
+                {conversations.length > 1 && (
+                  <button
+                    onClick={() => removeConversation(c.id)}
+                    className="shrink-0 rounded p-0.5 text-gray-400 hover:bg-gray-200 hover:text-red-500 md:opacity-0 md:group-hover:opacity-100"
+                    title="删除对话窗口"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </div>
+            );
+          })}
+        </div>
+      </aside>
+
+      {/* 当前窗口对话区：消息区滚动，输入框固定底部 */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="mb-4 shrink-0 text-center">
+          <h1 className="text-2xl font-semibold text-gray-900">赛事问数助手</h1>
+          <p className="mt-1 text-sm text-gray-500">用自然语言查询赛程、比分、报名与统计</p>
+          <p className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
+            {user ? `已登录 · ${ROLE_LABELS[user.role ?? "player"] ?? "玩家"}` : "游客模式（未登录）"} · {scopeHint}
+          </p>
+        </header>
+        <main className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-4">
+          {!hydrated ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-400">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> 正在恢复对话…
             </div>
           ) : (
-            <div key={m.id} className="flex justify-start">
-              <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-gray-200 bg-white p-4 shadow-sm">
-                {m.events.length === 0 && !m.error && (
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
-                    <Loader2 className="h-4 w-4 animate-spin" /> 思考中…
+            <>
+              {messages.length === 0 && (
+                <div className="space-y-4 pt-8 text-center">
+                  <p className="text-sm text-gray-400">
+                    试试问：「XX 队最近 5 场比赛的比分」或「本届赛事小组赛积分榜」
+                  </p>
+                  <PresetChips presets={presets} onPick={onPickPreset} />
+                </div>
+              )}
+              {messages.map((m) =>
+                m.role === "user" ? (
+                  <div key={m.id} className="flex justify-end">
+                    <div className="max-w-[80%] rounded-2xl rounded-br-md bg-blue-600 px-4 py-2 text-white shadow-sm">
+                      {m.content}
+                    </div>
                   </div>
-                )}
-                {m.events.length > 0 && (
-                  <>
-                    <NodeGraph events={m.events} />
-                    {doneEvent(m) && <ResultTable done={doneEvent(m)!} />}
-                  </>
-                )}
-                {m.error && <div className="text-sm text-red-500">{m.error}</div>}
-              </div>
-            </div>
-          ),
-        )}
-      </main>
-      <footer className="sticky bottom-0 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent px-1 pb-1 pt-6">
-        <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-2 pl-4 shadow-lg shadow-gray-200/60">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="输入赛事问题…"
-            className="flex-1 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
-          />
-          <button
-            onClick={() => send()}
-            disabled={loading || !input.trim()}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
-            title="发送"
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </button>
-        </div>
-        <p className="mt-2 text-center text-xs text-gray-400">问数助手基于赛事库自动查询，结果仅供参考</p>
-      </footer>
+                ) : (
+                  <div key={m.id} className="flex justify-start">
+                    <div className="max-w-[90%] rounded-2xl rounded-bl-md border border-gray-200 bg-white p-4 shadow-sm">
+                      {m.events.length === 0 && !m.error && (
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <Loader2 className="h-4 w-4 animate-spin" /> 思考中…
+                        </div>
+                      )}
+                      {m.events.length > 0 && (
+                        <>
+                          <NodeGraph events={m.events} />
+                          {doneEvent(m) && <ResultTable done={doneEvent(m)!} />}
+                        </>
+                      )}
+                      {m.error && <div className="text-sm text-red-500">{m.error}</div>}
+                    </div>
+                  </div>
+                ),
+              )}
+            </>
+          )}
+        </main>
+        <footer className="shrink-0 bg-gradient-to-t from-gray-50 via-gray-50 to-transparent px-1 pb-1 pt-6">
+          <div className="flex items-center gap-2 rounded-2xl border border-gray-200 bg-white p-2 pl-4 shadow-lg shadow-gray-200/60">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="输入赛事问题…"
+              className="flex-1 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+            />
+            <button
+              onClick={() => send()}
+              disabled={loading || !input.trim()}
+              className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600 text-white transition-colors hover:bg-blue-700 disabled:opacity-40"
+              title="发送"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+            </button>
+          </div>
+          <p className="mt-2 text-center text-xs text-gray-400">问数助手基于赛事库自动查询，结果仅供参考</p>
+        </footer>
+      </div>
 
       {/* 带参数的预制提示词：选择赛事后生成问题 */}
       <Modal
@@ -406,7 +594,12 @@ export default function AskPage() {
                   key={t.id}
                   className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-blue-50"
                 >
-                  <input type="radio" name="preset-tournament" defaultChecked={t.id === tournaments[0].id} />
+                  <input
+                    type="radio"
+                    name="preset-tournament"
+                    checked={t.id === selectedTournamentId}
+                    onChange={() => setSelectedTournamentId(t.id)}
+                  />
                   <span className="text-gray-800">{t.name}</span>
                 </label>
               ))}

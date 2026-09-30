@@ -1,7 +1,7 @@
 /** 页面布局：官网（玩家视角）与管理后台（办赛者视角），两个独立入口。 */
 
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { ClipboardList, LayoutDashboard, LogOut, MessageSquareText, Settings, Shield, Trophy, Users } from "lucide-react";
+import { ClipboardList, LayoutDashboard, LogOut, MessageSquareText, Plug, Settings, Shield, Trophy, Users } from "lucide-react";
 import { useAuth } from "../lib/auth";
 import { ROLE_LABELS } from "../types";
 
@@ -86,6 +86,11 @@ export function PortalLayout() {
             <NavLink to="/ask" className={navCls}>
               <span className="inline-flex items-center gap-1">
                 <MessageSquareText className="h-3.5 w-3.5" /> 问数助手
+              </span>
+            </NavLink>
+            <NavLink to="/mcp" className={navCls}>
+              <span className="inline-flex items-center gap-1">
+                <Plug className="h-3.5 w-3.5" /> MCP 服务
               </span>
             </NavLink>
           </nav>
